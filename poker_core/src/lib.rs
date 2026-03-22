@@ -1460,16 +1460,20 @@ fn simulate_action_on_world(g: &Game, user_action: Action, world_seed: u64) -> i
 
     // apply user's action first
     apply_action(&mut g2, u, user_action);
-    let post_action_stack = g2.players[u].stack;
 
     if !g2.hand_over {
         // advance to next actor
         advance_turn_or_runout(&mut g2, u);
     }
 
+    let settled_stack = g2.players[u].stack;
+    if g2.hand_over {
+        return settled_stack - pre_action_stack;
+    }
+
     // finish sim
     let future_delta = simulate_once(g2);
-    post_action_stack - pre_action_stack + future_delta
+    settled_stack - pre_action_stack + future_delta
 }
 
 #[cfg(test)]
@@ -1592,7 +1596,7 @@ fn user_hand_class(g: &Game) -> String {
 }
 
 fn compute_state_why_metrics(g: &Game, iters: usize) -> StateWhyMetrics {
-    let to_call = user_to_call(g);
+    let to_call = action_amount(g, Action::CheckCall);
     let pot_after_call = g.pot + to_call;
     let pot_odds_pct = if to_call > 0 && pot_after_call > 0 {
         (to_call as f64 / pot_after_call as f64) * 100.0
@@ -2933,6 +2937,120 @@ mod tests {
         let capped = legal_actions(g);
         assert!(!capped.contains(&Action::RaiseMin));
         assert!(!capped.contains(&Action::RaisePot));
+
+        pc_free_game(ptr);
+    }
+
+    #[test]
+    fn all_in_call_ev_includes_immediate_showdown_award() {
+        let ptr = pc_new_game(20260307, 6);
+        assert!(!ptr.is_null(), "game allocation failed");
+        pc_step_ai_until_user_or_hand_end(ptr);
+
+        // SAFETY: ptr is valid in test scope.
+        let g = unsafe { &mut *ptr };
+        let u = user_index(g);
+        let v = (0..g.players.len()).find(|&idx| idx != u).unwrap();
+
+        g.hand_over = false;
+        g.winner = None;
+        g.winner_idxs.clear();
+        g.street = Street::River;
+        g.pot = 300;
+        g.bet_to_call = 50;
+        g.street_bet_done = true;
+        g.raises_this_street = 0;
+        g.street_actions_left = 1;
+        g.to_act = u;
+        g.board = vec![
+            Card { rank: 13, suit: 0 },
+            Card { rank: 8, suit: 0 },
+            Card { rank: 5, suit: 0 },
+            Card { rank: 2, suit: 0 },
+            Card { rank: 9, suit: 1 },
+        ];
+
+        for (idx, p) in g.players.iter_mut().enumerate() {
+            p.in_hand = idx == u || idx == v;
+            p.stack = 0;
+            p.committed_street = 0;
+            p.contributed_hand = 0;
+            p.hand_rank = None;
+            p.last_action.clear();
+        }
+
+        g.players[u].stack = 50;
+        g.players[u].hole = [Card { rank: 14, suit: 0 }, Card { rank: 3, suit: 1 }];
+        g.players[v].committed_street = 50;
+        g.players[v].last_action = "bet 50".to_string();
+
+        let call_ev = estimate_ev(g, Action::CheckCall, 200);
+        let fold_ev = estimate_ev(g, Action::Fold, 200);
+
+        assert!(
+            (call_ev - 300.0).abs() < 1e-9,
+            "expected call EV to include immediate showdown award, got {}",
+            call_ev
+        );
+        assert!(
+            fold_ev.abs() < 1e-9,
+            "fold EV should remain zero, got {}",
+            fold_ev
+        );
+
+        pc_free_game(ptr);
+    }
+
+    #[test]
+    fn why_metrics_use_effective_all_in_call_price() {
+        let ptr = pc_new_game(20260308, 6);
+        assert!(!ptr.is_null(), "game allocation failed");
+        pc_step_ai_until_user_or_hand_end(ptr);
+
+        // SAFETY: ptr is valid in test scope.
+        let g = unsafe { &mut *ptr };
+        let u = user_index(g);
+        let v = (0..g.players.len()).find(|&idx| idx != u).unwrap();
+
+        g.hand_over = false;
+        g.winner = None;
+        g.winner_idxs.clear();
+        g.street = Street::River;
+        g.pot = 200;
+        g.bet_to_call = 60;
+        g.street_bet_done = true;
+        g.raises_this_street = 0;
+        g.street_actions_left = 1;
+        g.to_act = u;
+        g.board = vec![
+            Card { rank: 13, suit: 0 },
+            Card { rank: 8, suit: 0 },
+            Card { rank: 5, suit: 0 },
+            Card { rank: 2, suit: 0 },
+            Card { rank: 9, suit: 1 },
+        ];
+
+        for (idx, p) in g.players.iter_mut().enumerate() {
+            p.in_hand = idx == u || idx == v;
+            p.stack = 0;
+            p.committed_street = 0;
+            p.contributed_hand = 0;
+            p.hand_rank = None;
+            p.last_action.clear();
+        }
+
+        g.players[u].stack = 50;
+        g.players[u].hole = [Card { rank: 14, suit: 0 }, Card { rank: 3, suit: 1 }];
+        g.players[v].committed_street = 60;
+        g.players[v].last_action = "bet 60".to_string();
+
+        let metrics = compute_state_why_metrics(g, 80);
+        assert_eq!(metrics.to_call, 50);
+        assert!(
+            (metrics.required_equity_pct - 20.0).abs() < 1e-9,
+            "expected effective all-in price to drive required equity, got {}",
+            metrics.required_equity_pct
+        );
 
         pc_free_game(ptr);
     }

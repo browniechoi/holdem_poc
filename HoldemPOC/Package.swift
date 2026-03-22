@@ -21,6 +21,7 @@ let package = Package(
                 .unsafeFlags(["-L../poker_core/target/release", "-lpoker_core"]),
                 .linkedFramework("SwiftUI"),
                 .linkedFramework("AppKit"),
+                .linkedFramework("ScreenCaptureKit"),
             ]
         ),
     ]
