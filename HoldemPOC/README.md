@@ -47,7 +47,7 @@ Generated session reports:
 
 - `/Users/gyuhyo/Library/Application Support/HoldemPOC/history/reports/`
 
-Optional OpenAI coaching pass for the 10-hand benchmark:
+Optional OpenAI coaching pass for the 20-hand benchmark:
 
 - Set `OPENAI_API_KEY` before launch to enable the API call.
 - Optionally set `HOLDEM_OPENAI_MODEL` to override the preferred model string.
@@ -61,4 +61,70 @@ You can also pass a full app path, for example:
 
 ```bash
 HOLDEM_REPORT_OPEN_APP="/Applications/Sublime Text.app" ./run_mac.sh
+```
+
+## Deterministic Layout Snapshots
+
+Seeded layout harness scenes are available for regression checks:
+
+- `live_turn`
+- `all_in_turn`
+- `showdown`
+- `long_names`
+- `long_footer_pills`
+- `coach_turn`
+
+Render the full snapshot pack:
+
+```bash
+./scripts/render_layout_snapshots.sh
+```
+
+Snapshot rendering now fails fast if ScreenCaptureKit cannot capture the seeded app window.
+The harness defaults to a longer capture delay tuned for stable showdown snapshots; override it only if you are intentionally testing faster captures.
+
+Artifacts are written to:
+
+- `/Users/gyuhyo/holdem_poc/artifacts/layout_snapshots/current/`
+
+Useful overrides:
+
+```bash
+HOLDEM_UI_WINDOW_WIDTH=1440 HOLDEM_UI_WINDOW_HEIGHT=900 ./scripts/render_layout_snapshots.sh
+HOLDEM_UI_SNAPSHOT_DELAY=2.5 ./scripts/render_layout_snapshots.sh
+```
+
+## Pre-Release Check
+
+Run the full local gate before shipping:
+
+```bash
+./scripts/pre_release_check.sh
+```
+
+That command runs:
+
+1. `cargo test -q`
+2. `cargo build --release -q`
+3. `swift build -q`
+4. `python3 -m py_compile` for report scripts and fixture checker
+5. golden report fixture validation
+6. deterministic layout snapshot rendering
+7. pixel-exact layout baseline diffing
+
+Critical UI regions are also asserted from:
+
+- `/Users/gyuhyo/holdem_poc/tests/fixtures/layout_snapshots/regions.json`
+
+To rewrite golden reports intentionally after a legitimate report-format change:
+
+```bash
+python3 ./scripts/check_report_fixtures.py --rewrite
+```
+
+To bless updated layout baselines intentionally after a legitimate UI change:
+
+```bash
+./scripts/render_layout_snapshots.sh
+python3 ./scripts/check_layout_snapshots.py --rewrite
 ```

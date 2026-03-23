@@ -18,6 +18,8 @@ from generate_latest_session_report import (
     _latest_session_id,
     _load_jsonl,
     _normalize_play_event,
+    _previous_session_id,
+    _session_summary_for_sid,
     generate_report,
 )
 
@@ -139,6 +141,25 @@ def _build_evidence_block(events: list[dict[str, Any]], session_id: str) -> str:
         for decision in decisions
         if _safe_float(decision.get("regret")) <= _safe_float(decision.get("equivalence_tolerance"))
     )
+    previous_session_id = _previous_session_id(events, session_id)
+    previous_summary = _session_summary_for_sid(events, previous_session_id) if previous_session_id else None
+    previous_comparison = None
+    if previous_summary is not None:
+        current_avg_regret = (
+            sum(_safe_float(decision.get("regret")) for decision in decisions) / decision_count if decision_count else 0.0
+        )
+        current_realized_pnl = _safe_float(decisions[-1].get("session_realized_pnl")) if decisions else 0.0
+        current_near_opt_rate = (near_opt_count / decision_count) if decision_count else 0.0
+        previous_comparison = {
+            "previous_session_id": previous_session_id,
+            "near_opt_rate_delta": round(current_near_opt_rate - _safe_float(previous_summary.get("near_opt_rate")), 4),
+            "avg_regret_delta": round(current_avg_regret - _safe_float(previous_summary.get("avg_regret")), 2),
+            "session_realized_pnl_delta": round(
+                current_realized_pnl - _safe_float(previous_summary.get("session_realized_pnl")),
+                2,
+            ),
+            "previous_session_overview": previous_summary,
+        }
     evidence = {
         "session_id": session_id,
         "session_overview": {
@@ -169,6 +190,7 @@ def _build_evidence_block(events: list[dict[str, Any]], session_id: str) -> str:
         },
         "street_summary": street_summary,
         "top_leaks": top_leaks,
+        "previous_session_comparison": previous_comparison,
     }
     return json.dumps(evidence, indent=2, sort_keys=True)
 
@@ -196,6 +218,7 @@ Requirements:
 - Do not dump raw logs or internal schema details.
 - Identify 2-4 concrete behavioral patterns only if the evidence supports them.
 - Every takeaway must cite evidence such as hand ids, streets, action-count mismatches, regret values, undo rate, or bust count.
+- If previous-session comparison is present, explain what actually changed instead of restating the same advice in slightly different wording.
 - Do not repeat the same leak in multiple bullets with different wording.
 - Do not mention overbets, undo habits, or busts unless the evidence clearly supports that topic.
 - Distinguish between a repeat pattern and a single expensive punt.

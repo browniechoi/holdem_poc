@@ -149,7 +149,158 @@ def _latest_session_id(events: list[dict[str, Any]]) -> tuple[str, dt.datetime]:
     return sid, last_ts
 
 
-def generate_report(events: list[dict[str, Any]], sid: str) -> str:
+def _session_ids_by_end_ts(events: list[dict[str, Any]]) -> list[str]:
+    latest_by_session: dict[str, dt.datetime] = {}
+    for e in events:
+        sid = e.get("session_id") or (e.get("envelope") or {}).get("session_id")
+        ts = _parse_ts(e.get("ts"))
+        if not sid or ts is None:
+            continue
+        cur = latest_by_session.get(sid)
+        if cur is None or ts > cur:
+            latest_by_session[sid] = ts
+    return [sid for sid, _ in sorted(latest_by_session.items(), key=lambda kv: kv[1])]
+
+
+def _previous_session_id(events: list[dict[str, Any]], sid: str) -> str | None:
+    ordered = _session_ids_by_end_ts(events)
+    try:
+        idx = ordered.index(sid)
+    except ValueError:
+        return None
+    if idx <= 0:
+        return None
+    return ordered[idx - 1]
+
+
+def _decision_summary(decisions: list[dict[str, Any]], undos: int, busts: int) -> dict[str, Any]:
+    decision_count = len(decisions)
+    total_regret = sum(float(e.get("regret") or 0.0) for e in decisions)
+    near_opt = sum(
+        1
+        for e in decisions
+        if float(e.get("regret") or 0.0) <= float(e.get("equivalence_tolerance") or 0.0)
+    )
+    avg_regret = (total_regret / decision_count) if decision_count else 0.0
+    undo_rate = (undos / decision_count) if decision_count else 0.0
+    last_session_realized_pnl = 0.0
+    for e in decisions:
+        val = e.get("session_realized_pnl")
+        if isinstance(val, (int, float)):
+            last_session_realized_pnl = float(val)
+    return {
+        "decision_count": decision_count,
+        "near_opt_count": near_opt,
+        "near_opt_rate": (near_opt / decision_count) if decision_count else 0.0,
+        "total_regret": total_regret,
+        "avg_regret": avg_regret,
+        "undo_count": undos,
+        "undo_rate": undo_rate,
+        "bust_count": busts,
+        "session_realized_pnl": last_session_realized_pnl,
+    }
+
+
+def _street_summary_rows(decisions: list[dict[str, Any]]) -> list[tuple[str, int, float, float, float]]:
+    by_street: dict[str, list[dict[str, Any]]] = collections.defaultdict(list)
+    for e in decisions:
+        by_street[str(e.get("street") or "")].append(e)
+
+    street_order = {"preflop": 0, "flop": 1, "turn": 2, "river": 3}
+    streets_sorted = sorted(by_street.items(), key=lambda kv: street_order.get(kv[0], 99))
+
+    street_rows: list[tuple[str, int, float, float, float]] = []
+    for street, lst in streets_sorted:
+        regrets = [float(x.get("regret") or 0.0) for x in lst]
+        n = len(lst)
+        near = sum(
+            1
+            for x in lst
+            if float(x.get("regret") or 0.0) <= float(x.get("equivalence_tolerance") or 0.0)
+        )
+        street_rows.append((street, n, (near / n) if n else 0.0, (sum(regrets) / n) if n else 0.0, sum(regrets)))
+    return street_rows
+
+
+def _action_mismatch_rows(
+    decisions: list[dict[str, Any]],
+) -> tuple[list[tuple[int, str, int, int]], list[dict[str, Any]], collections.Counter[Any], collections.Counter[Any]]:
+    chosen_ctr = collections.Counter(e.get("chosen_action") for e in decisions)
+    best_ctr = collections.Counter(e.get("best_action") for e in decisions)
+    actions = sorted(set(chosen_ctr) | set(best_ctr))
+
+    deltas: list[tuple[int, str, int, int]] = []
+    details: list[dict[str, Any]] = []
+    for action in actions:
+        chosen_count = int(chosen_ctr.get(action, 0))
+        best_count = int(best_ctr.get(action, 0))
+        if chosen_count != best_count:
+            deltas.append((abs(chosen_count - best_count), action or "", chosen_count, best_count))
+
+        chosen_decisions = [e for e in decisions if e.get("chosen_action") == action]
+        total_regret_when_chosen = sum(float(e.get("regret") or 0.0) for e in chosen_decisions)
+        avg_regret_when_chosen = (
+            total_regret_when_chosen / len(chosen_decisions) if chosen_decisions else 0.0
+        )
+        non_equivalent_when_chosen = sum(
+            1
+            for e in chosen_decisions
+            if float(e.get("regret") or 0.0) > max(0.01, float(e.get("equivalence_tolerance") or 0.0))
+        )
+        top_example = max(chosen_decisions, key=lambda e: float(e.get("regret") or 0.0), default=None)
+        details.append(
+            {
+                "action": action or "",
+                "chosen_count": chosen_count,
+                "best_count": best_count,
+                "delta": chosen_count - best_count,
+                "total_regret_when_chosen": total_regret_when_chosen,
+                "avg_regret_when_chosen": avg_regret_when_chosen,
+                "non_equivalent_when_chosen": non_equivalent_when_chosen,
+                "top_example": top_example,
+            }
+        )
+
+    deltas.sort(reverse=True)
+    details.sort(
+        key=lambda item: (
+            abs(int(item["delta"])),
+            float(item["total_regret_when_chosen"]),
+            float(item["avg_regret_when_chosen"]),
+        ),
+        reverse=True,
+    )
+    return deltas[:6], details, chosen_ctr, best_ctr
+
+
+def _session_summary_for_sid(events: list[dict[str, Any]], sid: str) -> dict[str, Any] | None:
+    raw_session_events = [
+        e for e in events if (e.get("session_id") or (e.get("envelope") or {}).get("session_id")) == sid
+    ]
+    if not raw_session_events:
+        return None
+    session_events: list[dict[str, Any]] = []
+    for e in raw_session_events:
+        try:
+            session_events.append(_normalize_play_event(e))
+        except ValueError:
+            continue
+    decisions = [e for e in session_events if e.get("event") == "decision_lock"]
+    undos = sum(1 for e in session_events if e.get("event") == "undo")
+    busts = sum(1 for e in session_events if e.get("event") == "user_bust")
+    summary = _decision_summary(decisions, undos, busts)
+    summary["session_id"] = sid
+    return summary
+
+
+def generate_report(
+    events: list[dict[str, Any]],
+    sid: str,
+    *,
+    generated_date: str | None = None,
+    raw_log_label: str | None = None,
+    canonical_bundle_label: str | None = None,
+) -> str:
     raw_session_events = [
         e for e in events if (e.get("session_id") or (e.get("envelope") or {}).get("session_id")) == sid
     ]
@@ -204,51 +355,31 @@ def generate_report(events: list[dict[str, Any]], sid: str) -> str:
     seq_matches = all((e.get("envelope") or {}).get("seq") == e.get("seq") for e in session_events)
 
     # Decision stats
-    decision_count = len(decisions)
-    regrets = [float(e.get("regret") or 0.0) for e in decisions]
-    tolerances = [float(e.get("equivalence_tolerance") or 0.0) for e in decisions]
-    near_opt = sum(
-        1
-        for e in decisions
-        if float(e.get("regret") or 0.0) <= float(e.get("equivalence_tolerance") or 0.0)
-    )
-    total_regret = sum(regrets)
-    avg_regret = (total_regret / decision_count) if decision_count else 0.0
-    undo_rate = (undos / decision_count) if decision_count else 0.0
+    current_summary = _decision_summary(decisions, undos, busts)
+    decision_count = int(current_summary["decision_count"])
+    near_opt = int(current_summary["near_opt_count"])
+    total_regret = float(current_summary["total_regret"])
+    avg_regret = float(current_summary["avg_regret"])
+    undo_rate = float(current_summary["undo_rate"])
     total_session_realized_pnl_delta = sum(float(e.get("session_realized_pnl_delta") or 0.0) for e in decisions)
     avg_session_realized_pnl_delta = (
         total_session_realized_pnl_delta / decision_count if decision_count else 0.0
     )
-    last_session_realized_pnl = 0.0
-    for e in decisions:
-        val = e.get("session_realized_pnl")
-        if isinstance(val, (int, float)):
-            last_session_realized_pnl = float(val)
+    last_session_realized_pnl = float(current_summary["session_realized_pnl"])
 
     # Hands in session (as seen by decisions). This matches the "hands with decisions" framing.
     hand_ids = sorted({int(e.get("hand_id")) for e in decisions if isinstance(e.get("hand_id"), int)})
 
     # Street breakdown
-    by_street: dict[str, list[dict[str, Any]]] = collections.defaultdict(list)
-    for e in decisions:
-        by_street[str(e.get("street") or "")].append(e)
-
-    street_order = {"preflop": 0, "flop": 1, "turn": 2, "river": 3}
-    streets_sorted = sorted(by_street.items(), key=lambda kv: street_order.get(kv[0], 99))
-
-    street_rows: list[tuple[str, int, float, float, float]] = []
-    for street, lst in streets_sorted:
-        r = [float(x.get("regret") or 0.0) for x in lst]
-        n = len(lst)
-        near = sum(
-            1
-            for x in lst
-            if float(x.get("regret") or 0.0) <= float(x.get("equivalence_tolerance") or 0.0)
-        )
-        street_rows.append((street, n, (near / n) if n else 0.0, (sum(r) / n) if n else 0.0, sum(r)))
+    street_rows = _street_summary_rows(decisions)
 
     # Nuance: find a street whose regret is dominated by one decision.
     dominance_note: str | None = None
+    by_street: dict[str, list[dict[str, Any]]] = collections.defaultdict(list)
+    for e in decisions:
+        by_street[str(e.get("street") or "")].append(e)
+    street_order = {"preflop": 0, "flop": 1, "turn": 2, "river": 3}
+    streets_sorted = sorted(by_street.items(), key=lambda kv: street_order.get(kv[0], 99))
     for street, lst in streets_sorted:
         if len(lst) < 2:
             continue
@@ -270,28 +401,21 @@ def generate_report(events: list[dict[str, Any]], sid: str) -> str:
     top = sorted(decisions, key=lambda e: float(e.get("regret") or 0.0), reverse=True)[:10]
 
     # Sizing / action tendencies
-    chosen_ctr = collections.Counter(e.get("chosen_action") for e in decisions)
-    best_ctr = collections.Counter(e.get("best_action") for e in decisions)
-    actions = sorted(set(chosen_ctr) | set(best_ctr))
-    deltas: list[tuple[int, str, int, int]] = []
-    for a in actions:
-        c = int(chosen_ctr.get(a, 0))
-        b = int(best_ctr.get(a, 0))
-        if c == b:
-            continue
-        deltas.append((abs(c - b), a or "", c, b))
-    deltas.sort(reverse=True)
-    deltas = deltas[:6]
+    deltas, action_details, chosen_ctr, best_ctr = _action_mismatch_rows(decisions)
+    previous_sid = _previous_session_id(events, sid)
+    previous_summary = _session_summary_for_sid(events, previous_sid) if previous_sid else None
 
-    generated_date = dt.datetime.now().date().isoformat()
+    generated_date = generated_date or dt.datetime.now().date().isoformat()
+    raw_log_label = raw_log_label or str(DEFAULT_RAW_LOG)
+    canonical_bundle_label = canonical_bundle_label or str(DEFAULT_CANONICAL_BUNDLE)
 
     md: list[str] = []
     md.append("# Latest Session Analysis (local)")
     md.append("")
     md.append(f"- Generated: {generated_date}")
     md.append(f"- Raw log snapshot cutoff: `{end_ts.isoformat().replace('+00:00', 'Z')}`")
-    md.append(f"- Canonical bundle: `{DEFAULT_CANONICAL_BUNDLE}`")
-    md.append(f"- Raw audit log: `{DEFAULT_RAW_LOG}`")
+    md.append(f"- Canonical bundle: `{canonical_bundle_label}`")
+    md.append(f"- Raw audit log: `{raw_log_label}`")
     md.append("")
 
     md.append("## Session Snapshot")
@@ -311,6 +435,29 @@ def generate_report(events: list[dict[str, Any]], sid: str) -> str:
     )
     md.append(f"- Busts: `{busts}`")
     md.append(f"- Undos: `{undos}` (undo rate `{_fmt_float(undo_rate * 100.0)}%`)")
+    md.append("")
+
+    md.append("## Trend vs Previous Session")
+    md.append("")
+    if previous_summary is None:
+        md.append("No prior session with parseable timestamps was available for comparison.")
+    else:
+        near_delta = float(current_summary["near_opt_rate"]) - float(previous_summary["near_opt_rate"])
+        avg_regret_delta = float(current_summary["avg_regret"]) - float(previous_summary["avg_regret"])
+        pnl_delta = float(current_summary["session_realized_pnl"]) - float(previous_summary["session_realized_pnl"])
+        md.append(f"- Previous session id: `{previous_summary['session_id']}`")
+        md.append(
+            f"- Near-opt rate: `{_fmt_float(float(previous_summary['near_opt_rate']) * 100.0)}%` -> `{_fmt_float(float(current_summary['near_opt_rate']) * 100.0)}%`"
+            f" (`{_fmt_float(near_delta * 100.0, 1)}` pts)"
+        )
+        md.append(
+            f"- Avg regret: `{_fmt_float(float(previous_summary['avg_regret']))}` -> `{_fmt_float(float(current_summary['avg_regret']))}`"
+            f" (`{_fmt_float(avg_regret_delta)}`)"
+        )
+        md.append(
+            f"- Session realized P&L: `{_fmt_float(float(previous_summary['session_realized_pnl']))}` -> `{_fmt_float(float(current_summary['session_realized_pnl']))}`"
+            f" (`{_fmt_float(pnl_delta)}`)"
+        )
     md.append("")
 
     md.append("## Log Integrity Checks")
@@ -381,47 +528,165 @@ def generate_report(events: list[dict[str, Any]], sid: str) -> str:
         md.append("No decisions found in this session snapshot.")
         return "\n".join(md).rstrip() + "\n"
 
-    worst = max(decisions, key=lambda e: float(e.get("regret") or 0.0))
+    non_equivalent = [
+        e
+        for e in decisions
+        if float(e.get("regret") or 0.0) > max(0.01, float(e.get("equivalence_tolerance") or 0.0))
+    ]
+
+    worst = max(non_equivalent or decisions, key=lambda e: float(e.get("regret") or 0.0))
     worst_regret = float(worst.get("regret") or 0.0)
     worst_street = str(worst.get("street") or "")
     worst_chosen = str(worst.get("chosen_action") or "")
     worst_best = str(worst.get("best_action") or "")
+    has_major_leak = bool(non_equivalent) and worst_regret > max(0.01, float(worst.get("equivalence_tolerance") or 0.0))
 
-    i = 1
-    if worst_best == "fold" and worst_chosen != "fold":
-        md.append(f"{i}. **When best is `fold`, treat it as a hard stop.**")
-        md.append(f"   - Biggest leak was `{worst_chosen}` vs `fold` on {worst_street} (lost `{_fmt_float(worst_regret)}` EV).")
-        i += 1
-        md.append("")
+    takeaways: list[tuple[str, str]] = []
+    used_topics: set[str] = set()
 
-    if "overbet" in " ".join(chosen_ctr.keys()):
-        md.append(f"{i}. **Don’t default to overbets; force a comparison against standard sizes.**")
-        md.append("   - Overbets tend to be high-variance and are often not robust unless clearly best in the EV map.")
-        i += 1
-        md.append("")
+    if previous_summary is not None and decision_count >= 5 and int(previous_summary["decision_count"]) >= 5:
+            near_delta = float(current_summary["near_opt_rate"]) - float(previous_summary["near_opt_rate"])
+            avg_regret_delta = float(current_summary["avg_regret"]) - float(previous_summary["avg_regret"])
+            if abs(near_delta) >= 0.08 or abs(avg_regret_delta) >= 5.0:
+                verdict = "improved" if near_delta > 0 and avg_regret_delta <= 0 else "regressed" if near_delta < 0 and avg_regret_delta >= 0 else "mixed"
+                if verdict == "improved":
+                    title = "**You improved versus the previous session, but the gains are narrow.**"
+                elif verdict == "regressed":
+                    title = "**This session regressed versus the previous one.**"
+                else:
+                    title = "**Progress is mixed versus the previous session.**"
+                detail = (
+                    f"   - Near-opt rate moved from `{_fmt_float(float(previous_summary['near_opt_rate']) * 100.0)}%` to"
+                    f" `{_fmt_float(float(current_summary['near_opt_rate']) * 100.0)}%`, while avg regret moved from"
+                    f" `{_fmt_float(float(previous_summary['avg_regret']))}` to `{_fmt_float(float(current_summary['avg_regret']))}`."
+                )
+                takeaways.append(("trend", f"{title}\n{detail}"))
+                used_topics.add("trend")
 
-    if worst_chosen in {"check/call", "check"} and worst_best.startswith("raise"):
-        md.append(f"{i}. **If the model wants a raise, don’t settle for `check/call`.**")
-        md.append(f"   - Your worst spot was passive: `{worst_chosen}` vs `{worst_best}` on {worst_street}.")
-        i += 1
-        md.append("")
+    street_focus = None
+    for street, count, near_rate, street_avg_regret, street_total_regret in sorted(
+        street_rows,
+        key=lambda row: row[4],
+        reverse=True,
+    ):
+        if count >= 2 and total_regret > 0 and street_total_regret >= 0.4 * total_regret:
+            street_focus = (street, count, near_rate, street_avg_regret, street_total_regret)
+            break
+    if street_focus is not None:
+        street, count, near_rate, street_avg_regret, street_total_regret = street_focus
+        takeaways.append(
+            (
+                "street",
+                (
+                    f"**Most of the EV loss is concentrated on the {street}.**\n"
+                    f"   - {street.capitalize()} accounted for `{_fmt_float(street_total_regret)}` of `{_fmt_float(total_regret)}` total regret"
+                    f" across `{count}` decisions, with near-opt rate `{_fmt_float(near_rate * 100.0)}%`."
+                ),
+            )
+        )
+        used_topics.add("street")
 
-    if undos:
-        md.append(f"{i}. **Undo is fine; use it to protect EV, not to chase perfection.**")
-        md.append(f"   - You used `undo` {undos} time(s). If you undo, immediately re-check `{worst_best}` vs 1 alternative and commit.")
-        i += 1
-        md.append("")
+    pattern_detail = None
+    for item in action_details:
+        action = str(item["action"] or "")
+        chosen_count = int(item["chosen_count"])
+        best_count = int(item["best_count"])
+        delta = int(item["delta"])
+        total_regret_when_chosen = float(item["total_regret_when_chosen"])
+        avg_regret_when_chosen = float(item["avg_regret_when_chosen"])
+        top_example = item["top_example"]
+        if not action:
+            continue
+        if abs(delta) < 2:
+            continue
+        if total_regret_when_chosen < max(10.0, total_regret * 0.12):
+            continue
+        direction = "overused" if delta > 0 else "underused"
+        example_line = ""
+        if isinstance(top_example, dict):
+            example_line = (
+                f" Biggest example: hand `{_fmt_int(top_example.get('hand_id'))}` {str(top_example.get('street') or '')}"
+                f" where `{action}` lost `{_fmt_float(float(top_example.get('regret') or 0.0))}` EV versus"
+                f" `{str(top_example.get('best_action') or '')}`."
+            )
+        pattern_detail = (
+            f"**Your sizing mix is drifting around `{action}`.**\n"
+            f"   - You {direction} it: chosen `{chosen_count}` times vs best `{best_count}`, and those choices"
+            f" averaged `{_fmt_float(avg_regret_when_chosen)}` regret for `{_fmt_float(total_regret_when_chosen)}` total regret.{example_line}"
+        )
+        break
+    if pattern_detail is not None:
+        takeaways.append(("pattern", pattern_detail))
+        used_topics.add("pattern")
 
-    if busts:
-        md.append(f"{i}. **Bust review: don’t let a single non-equivalent decision decide the stack.**")
-        md.append("   - Tag the biggest-regret hand(s), replay them, and set a goal of 0 busts from non-equivalent actions next session.")
-        i += 1
-        md.append("")
+    if has_major_leak and worst_regret >= max(15.0, total_regret * 0.25):
+        if worst_best == "fold" and worst_chosen != "fold":
+            title = "**Your biggest leak is still a hard-stop spot.**"
+        elif worst_chosen in {"check/call", "check"} and worst_best.startswith("raise"):
+            title = "**Your biggest miss was passive when the model wanted pressure.**"
+        else:
+            title = "**One expensive punt is still distorting the session.**"
+        detail = (
+            f"   - Hand `{_fmt_int(worst.get('hand_id'))}` {worst_street}: `{worst_chosen}` vs `{worst_best}`"
+            f" lost `{_fmt_float(worst_regret)}` EV, which is `{_fmt_float((worst_regret / total_regret) * 100.0 if total_regret else 0.0)}%`"
+            f" of total session regret."
+        )
+        takeaways.append(("punt", f"{title}\n{detail}"))
+        used_topics.add("punt")
 
-    # If we didn't add anything (rare), add a generic line.
-    if i == 1:
-        md.append("1. **Keep the focus on your top-1 regret decision.**")
-        md.append("   - Fixing the single worst leak usually improves the session more than polishing many small spots.")
+    if undos >= max(2, round(decision_count * 0.2)):
+        takeaways.append(
+            (
+                "process",
+                (
+                    f"**Your review process is interrupting flow often enough to matter.**\n"
+                    f"   - You used `undo` `{undos}` time(s) ({_fmt_float(undo_rate * 100.0)}% of decisions)."
+                    f" Keep the replay, but set a rule: compare one alternative, then commit."
+                ),
+            )
+        )
+        used_topics.add("process")
+    elif busts:
+        takeaways.append(
+            (
+                "process",
+                (
+                    f"**Bust outcomes are still being driven by a few decisions, not steady leakage.**\n"
+                    f"   - `user_bust` fired `{busts}` time(s). Tag the top non-equivalent hand first rather than treating the whole session as broken."
+                ),
+            )
+        )
+        used_topics.add("process")
+
+    if not takeaways:
+        if has_major_leak:
+            takeaways.append(
+                (
+                    "fallback",
+                    (
+                        "**This sample points to one expensive mistake more than a repeat habit.**\n"
+                        f"   - Start with hand `{_fmt_int(worst.get('hand_id'))}` {worst_street}: `{worst_chosen}` vs `{worst_best}`"
+                        f" lost `{_fmt_float(worst_regret)}` EV."
+                    ),
+                )
+            )
+        else:
+            takeaways.append(
+                (
+                    "fallback",
+                    (
+                        ("**This sample is too thin for a strong behavioral read.**\n"
+                         f"   - Only `{decision_count}` decisions were logged, so prioritize volume before drawing conclusions from one bullet or one regret spike.")
+                        if decision_count < 3
+                        else
+                        ("**No strong leak is supported by this sample.**\n"
+                         f"   - Biggest recorded regret was `{_fmt_float(worst_regret)}`, which stayed within or near the equivalence threshold, so volume matters more than forcing a narrative.")
+                    ),
+                )
+            )
+
+    for idx, (_, takeaway) in enumerate(takeaways[:4], start=1):
+        md.append(f"{idx}. {takeaway}")
         md.append("")
 
     return "\n".join(md).rstrip() + "\n"

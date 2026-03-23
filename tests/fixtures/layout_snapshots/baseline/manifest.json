@@ -1,0 +1,179 @@
+{
+  "window": {
+    "logical_width": 1440,
+    "logical_height": 900
+  },
+  "region_config": "tests/fixtures/layout_snapshots/regions.json",
+  "scenes": [
+    "live_turn",
+    "all_in_turn",
+    "showdown",
+    "footer_showdown",
+    "long_names",
+    "long_footer_pills",
+    "coach_turn"
+  ],
+  "files": {
+    "live_turn": {
+      "path": "live_turn.png",
+      "pixel_width": 2880,
+      "pixel_height": 1718,
+      "md5": "7faef8905b6c8e08b2d27b01a4f84150",
+      "regions": {
+        "pot_zone": {
+          "x": 346,
+          "y": 722,
+          "width": 1094,
+          "height": 464,
+          "md5": "16b963fd348571cc3d56f873d341efd3"
+        }
+      }
+    },
+    "all_in_turn": {
+      "path": "all_in_turn.png",
+      "pixel_width": 2880,
+      "pixel_height": 1718,
+      "md5": "d51259790a1ffdc39ca31f6c7a9b12fd",
+      "regions": {
+        "pot_zone": {
+          "x": 346,
+          "y": 722,
+          "width": 1094,
+          "height": 464,
+          "md5": "f0056aa8c1bcfeff88c9fcc42b88dbe9"
+        }
+      }
+    },
+    "showdown": {
+      "path": "showdown.png",
+      "pixel_width": 2880,
+      "pixel_height": 1718,
+      "md5": "6e61a799fc47ccc0baeeb914e9a89125",
+      "regions": {
+        "pot_zone": {
+          "x": 346,
+          "y": 687,
+          "width": 1094,
+          "height": 533,
+          "md5": "0895a9fa43b7d8bfb4d5c106282db0b0"
+        },
+        "bottom_center_footer": {
+          "x": 490,
+          "y": 1237,
+          "width": 518,
+          "height": 395,
+          "md5": "fd10cdb08614a5c05a45a4411d03a1dd"
+        }
+      }
+    },
+    "footer_showdown": {
+      "path": "footer_showdown.png",
+      "pixel_width": 2880,
+      "pixel_height": 1718,
+      "md5": "c041460f357e6a865d5f31442f854a58",
+      "regions": {
+        "pot_zone": {
+          "x": 346,
+          "y": 687,
+          "width": 1094,
+          "height": 533,
+          "md5": "a6acc9d1b95a3f23265187a7f9759330"
+        },
+        "bottom_center_footer": {
+          "x": 490,
+          "y": 1237,
+          "width": 518,
+          "height": 395,
+          "md5": "56478120366fbeb85289745d7959d202"
+        }
+      }
+    },
+    "long_names": {
+      "path": "long_names.png",
+      "pixel_width": 2880,
+      "pixel_height": 1718,
+      "md5": "a94ce932913155b70e1ee67464c0a305",
+      "regions": {
+        "top_name_band": {
+          "x": 58,
+          "y": 172,
+          "width": 1325,
+          "height": 275,
+          "md5": "88eaac6c538dd33ff1447ac120b12171"
+        },
+        "bottom_name_band": {
+          "x": 58,
+          "y": 1203,
+          "width": 1325,
+          "height": 275,
+          "md5": "56bb23621aa972e7727ec11b10225907"
+        },
+        "pot_zone": {
+          "x": 346,
+          "y": 722,
+          "width": 1094,
+          "height": 464,
+          "md5": "4fa729561d713885223bea81d3944778"
+        }
+      }
+    },
+    "long_footer_pills": {
+      "path": "long_footer_pills.png",
+      "pixel_width": 2880,
+      "pixel_height": 1718,
+      "md5": "d8eee36fdbdb97423d974b4610588cd8",
+      "regions": {
+        "pot_zone": {
+          "x": 346,
+          "y": 687,
+          "width": 1094,
+          "height": 533,
+          "md5": "5f697751f3c7e1da9b227909d6a32752"
+        },
+        "bottom_left_footer": {
+          "x": 29,
+          "y": 1237,
+          "width": 432,
+          "height": 395,
+          "md5": "41753703e556f6d3998e7124aac77cd1"
+        },
+        "bottom_center_footer": {
+          "x": 490,
+          "y": 1237,
+          "width": 518,
+          "height": 395,
+          "md5": "9c3debb68c3342d2a899a429fd64d0ca"
+        },
+        "bottom_right_footer": {
+          "x": 950,
+          "y": 1237,
+          "width": 432,
+          "height": 395,
+          "md5": "595403e0337d5bc1719052356088b2cc"
+        }
+      }
+    },
+    "coach_turn": {
+      "path": "coach_turn.png",
+      "pixel_width": 2880,
+      "pixel_height": 1718,
+      "md5": "8b3bfb88eed24ba1fc32fbfd31f09e28",
+      "regions": {
+        "pot_zone": {
+          "x": 346,
+          "y": 722,
+          "width": 1094,
+          "height": 464,
+          "md5": "b578983476a6f97d5143c9d35079f65c"
+        },
+        "coach_note_panel": {
+          "x": 1440,
+          "y": 825,
+          "width": 1354,
+          "height": 223,
+          "md5": "dd6e7a2df742306cf41dbb0d4e2d50f5"
+        }
+      }
+    }
+  }
+}

@@ -3,3 +3,4 @@ HoldemPOC/.build/
 HoldemPOC/.swiftpm/
 poker_core/target/
 *.dSYM/
+artifacts/

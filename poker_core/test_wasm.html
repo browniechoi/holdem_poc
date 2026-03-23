@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>poker_core WASM test</title>
+  <style>
+    body { font-family: monospace; padding: 1rem; background: #111; color: #eee; }
+    pre  { background: #222; padding: 0.75rem; border-radius: 4px; overflow-x: auto; white-space: pre-wrap; }
+    h2   { color: #4fc; margin-top: 1.5rem; }
+    .pass { color: #4fc; }
+    .fail { color: #f66; }
+  </style>
+</head>
+<body>
+<h1>poker_core WASM smoke test</h1>
+<div id="output"></div>
+
+<script type="module">
+  import init, { WasmGame } from './pkg/poker_core.js';
+
+  const out = document.getElementById('output');
+  const log = (label, ok, detail) => {
+    const s = ok ? '✓' : '✗';
+    const cls = ok ? 'pass' : 'fail';
+    out.innerHTML += `<h2 class="${cls}">${s} ${label}</h2><pre>${JSON.stringify(detail, null, 2)}</pre>`;
+    if (!ok) console.error(label, detail);
+  };
+
+  await init();
+
+  // 1. Create game
+  const seed = Date.now();
+  const game = new WasmGame(seed, 6);
+  log('WasmGame constructor', !!game, { seed });
+
+  // 2. state_json round-trips to valid JSON
+  const rawState = game.state_json();
+  const state = JSON.parse(rawState);
+  log('state_json', Array.isArray(state.players) && state.players.length === 6, {
+    street: state.street,
+    pot: state.pot,
+    to_act: state.to_act,
+    players: state.players.map(p => ({ name: p.name, stack: p.stack, is_user: p.is_user })),
+    user_hole: state.user_hole,
+    board: state.board,
+  });
+
+  // 3. actions_with_ev_json returns non-empty array for a live hand
+  const rawActions = game.actions_with_ev_json(400);
+  const actions = JSON.parse(rawActions);
+  log('actions_with_ev_json (400 iters)', Array.isArray(actions) && actions.length > 0, {
+    count: actions.length,
+    actions: actions.map(a => ({ action: a.action, ev: a.ev.toFixed(2), is_best: a.is_best })),
+  });
+
+  // 4. Best action is marked
+  const best = actions.filter(a => a.is_best);
+  log('exactly one is_best action', best.length === 1, best);
+
+  // 5. Apply fold (action_code 0) then step AI
+  game.apply_user_action(0);
+  game.step_ai_until_user_or_hand_end();
+  const stateAfterFold = JSON.parse(game.state_json());
+  const userAfterFold = stateAfterFold.players.find(p => p.is_user);
+  log('fold: user last_action is fold', userAfterFold?.last_action === 'fold', {
+    last_action: userAfterFold?.last_action,
+    hand_over: stateAfterFold.hand_over,
+  });
+
+  // 6. Play to hand end, then start new hand
+  game.step_to_hand_end();
+  const stateHandEnd = JSON.parse(game.state_json());
+  log('step_to_hand_end: hand_over=true', stateHandEnd.hand_over === true, {
+    hand_over: stateHandEnd.hand_over,
+    winner_names: stateHandEnd.winner_names,
+  });
+
+  game.start_new_training_hand();
+  game.step_ai_until_user_or_hand_end();
+  const stateNewHand = JSON.parse(game.state_json());
+  log('start_new_training_hand: hand_over=false', stateNewHand.hand_over === false, {
+    street: stateNewHand.street,
+    hand_over: stateNewHand.hand_over,
+  });
+
+  // 7. Free memory
+  game.free();
+  log('game.free()', true, 'no crash');
+
+  out.innerHTML += '<h2>Done</h2>';
+</script>
+</body>
+</html>

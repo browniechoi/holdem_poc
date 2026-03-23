@@ -391,52 +391,51 @@ private struct CasinoChipTokenView: View {
     let showFaceLabel: Bool
 
     private var baseLineWidth: CGFloat {
-        max(0.9, size * 0.07)
+        max(0.8, size * 0.055)
     }
 
     private var ringLineWidth: CGFloat {
-        max(1.0, size * 0.11)
+        max(1.0, size * 0.085)
     }
 
     var body: some View {
         ZStack {
             Circle()
                 .fill(
-                    RadialGradient(
-                        colors: [tier.body.opacity(0.96), tier.body.opacity(0.58), tier.body.opacity(0.46)],
-                        center: .topLeading,
-                        startRadius: 0.5,
-                        endRadius: size * 0.74
+                    LinearGradient(
+                        colors: [tier.body.opacity(0.98), tier.body.opacity(0.82)],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
                     )
                 )
             Circle()
                 .fill(
                     RadialGradient(
-                        colors: [Color.white.opacity(0.35), Color.clear],
+                        colors: [Color.white.opacity(0.18), Color.clear],
                         center: .topTrailing,
                         startRadius: size * 0.04,
-                        endRadius: size * 0.38
+                        endRadius: size * 0.30
                     )
                 )
-                .frame(width: size * 0.78, height: size * 0.78)
+                .frame(width: size * 0.72, height: size * 0.72)
             Circle()
                 .stroke(
                     AngularGradient(
-                    colors: [tier.body.opacity(0.94), tier.edge.opacity(0.85), tier.body.opacity(0.66), tier.body.opacity(0.94)],
+                        colors: [tier.body.opacity(0.90), tier.edge.opacity(0.82), tier.body.opacity(0.78), tier.body.opacity(0.90)],
                         center: .center,
                         startAngle: chipTextureRotation(tier.value),
                         endAngle: chipTextureRotation(tier.value) + .degrees(360)
                     ),
                     lineWidth: ringLineWidth
                 )
-                .padding(size * 0.08)
+                .padding(size * 0.07)
             Circle()
                 .stroke(tier.edge.opacity(0.95), lineWidth: baseLineWidth)
-                .padding(size * 0.35)
+                .padding(size * 0.32)
             Circle()
                 .trim(from: 0.0, to: 0.97)
                 .stroke(
-                    tier.edge.opacity(0.32),
+                    tier.edge.opacity(0.24),
                     style: StrokeStyle(
                         lineWidth: baseLineWidth,
                         lineCap: .butt,
@@ -444,13 +443,13 @@ private struct CasinoChipTokenView: View {
                     )
                 )
                 .rotationEffect(chipTextureRotation(tier.value * 17))
-                .padding(size * 0.24)
+                .padding(size * 0.22)
             Circle()
                 .trim(from: 0.04, to: 0.48)
                 .stroke(
-                    tier.stripe.opacity(0.76),
+                    tier.stripe.opacity(0.62),
                     style: StrokeStyle(
-                        lineWidth: max(0.8, size * 0.07),
+                        lineWidth: max(0.8, size * 0.06),
                         lineCap: .round,
                         lineJoin: .round
                     )
@@ -458,22 +457,20 @@ private struct CasinoChipTokenView: View {
                 .rotationEffect(chipTextureRotation(tier.value * 7))
                 .frame(width: size * 0.88, height: size * 0.88)
             Circle()
-                .fill(tier.label.opacity(showFaceLabel ? 0.18 : 0.10))
-                .frame(width: size * 0.52, height: size * 0.52)
+                .fill(Color.white.opacity((tier.value == 5 || tier.value == 1) ? 0.06 : 0.10))
+                .frame(width: size * 0.50, height: size * 0.50)
             Circle()
-                .stroke(tier.edge.opacity(0.50), lineWidth: baseLineWidth * 0.72)
-                .frame(width: size * 0.52, height: size * 0.52)
+                .stroke(tier.edge.opacity(0.44), lineWidth: baseLineWidth * 0.70)
+                .frame(width: size * 0.50, height: size * 0.50)
             Circle()
-                .fill(Color.black.opacity(0.18))
-                .frame(width: size * 0.12, height: size * 0.12)
+                .fill(Color.black.opacity(0.08))
+                .frame(width: size * 0.10, height: size * 0.10)
             if showFaceLabel {
                 Text(chipFaceLabel(tier.value))
-                    .font(.system(size: size * 0.30, weight: .heavy, design: .rounded))
+                    .font(.system(size: size * 0.34, weight: .heavy, design: .rounded))
                     .foregroundStyle(tier.label)
                     .lineLimit(1)
                     .minimumScaleFactor(0.65)
-                    .shadow(color: Color.white.opacity(0.35), radius: 0.6, y: 0.4)
-                    .shadow(color: Color.black.opacity(0.22), radius: 0.8, y: -0.8)
             } else {
                 Circle()
                     .fill(tier.label.opacity(0.85))
@@ -485,7 +482,7 @@ private struct CasinoChipTokenView: View {
             }
         }
         .frame(width: size, height: size)
-        .shadow(color: tier.glow.opacity(0.52), radius: max(2.0, size * 0.20), x: 0, y: 1.2)
+        .shadow(color: Color.black.opacity(0.14), radius: max(0.8, size * 0.06), x: 0, y: 0.8)
     }
 }
 
@@ -499,7 +496,7 @@ private struct CasinoChipPileView: View {
         if showCountBadge {
             return max(1, min(tier.count, compact ? 2 : 3))
         }
-        return max(1, min(tier.count, compact ? 6 : 5))
+        return max(1, min(tier.count, compact ? 4 : 5))
     }
 
     var body: some View {
@@ -516,7 +513,6 @@ private struct CasinoChipPileView: View {
                         x: -CGFloat(idx) * (compact && !showCountBadge ? size * 0.05 : size * 0.13),
                         y: -CGFloat(idx) * (compact && !showCountBadge ? size * 0.12 : size * 0.10)
                     )
-                    .shadow(color: tier.body.opacity(0.28), radius: 0.7, y: 0.6)
                 }
             }
             .frame(width: size * 1.30, height: size * 1.26, alignment: .bottom)
@@ -537,8 +533,8 @@ private struct CasinoChipPileView: View {
             }
         }
         .frame(
-            width: compact ? (showCountBadge ? 28 : 26) : 36,
-            height: compact ? (showCountBadge ? 32 : 42) : 38,
+            width: compact ? (showCountBadge ? 26 : 23) : size * 1.38,
+            height: compact ? (showCountBadge ? 30 : 32) : size * 1.22,
             alignment: .bottomLeading
         )
     }
@@ -620,7 +616,7 @@ private struct CasinoChipRackView: View {
                     .minimumScaleFactor(0.72)
             } else {
                 Text(rackLabel)
-                    .font(compact ? Font.callout.weight(.bold).monospacedDigit() : Font.system(size: 13, weight: .semibold, design: .rounded).monospacedDigit())
+                    .font(compact ? Font.caption.weight(.bold).monospacedDigit() : Font.system(size: 13, weight: .semibold, design: .rounded).monospacedDigit())
                     .foregroundStyle(compact ? Color.primary.opacity(0.90) : rackTint)
                     .lineLimit(1)
                     .minimumScaleFactor(0.72)
@@ -633,8 +629,8 @@ private struct CasinoChipRackView: View {
         if let maxTiersOverride {
             rackBody(
                 maxTiers: max(1, maxTiersOverride),
-                chipSize: compact ? (showCountBadge ? 13 : 12) : 24,
-                spacing: compact ? 3 : 6
+                chipSize: compact ? (showCountBadge ? 12 : 11) : (centered ? 32 : 24),
+                spacing: compact ? 2 : (centered ? 8 : 6)
             )
             .padding(.horizontal, compact ? 0 : 8)
             .padding(.vertical, compact ? 0 : 4)
@@ -645,8 +641,8 @@ private struct CasinoChipRackView: View {
             )
         } else {
         ViewThatFits(in: .horizontal) {
-            rackBody(maxTiers: compact ? 2 : 3, chipSize: compact ? (showCountBadge ? 16 : 14) : 24, spacing: compact ? 4 : 7)
-            rackBody(maxTiers: compact ? 1 : 2, chipSize: compact ? (showCountBadge ? 13 : 12) : 20, spacing: compact ? 3 : 6)
+            rackBody(maxTiers: compact ? 2 : 3, chipSize: compact ? (showCountBadge ? 14 : 12) : 24, spacing: compact ? 3 : 7)
+            rackBody(maxTiers: compact ? 1 : 2, chipSize: compact ? (showCountBadge ? 12 : 10) : 20, spacing: compact ? 2 : 6)
         }
         .padding(.horizontal, compact ? 0 : 8)
         .padding(.vertical, compact ? 0 : 4)
@@ -737,25 +733,11 @@ struct ContentView: View {
     @State private var showingSessionHistory = false
 
     private var seats: [SeatInfo] {
-        let players = Array(vm.state.players.enumerated())
-        guard !players.isEmpty else { return [] }
-
-        let userIndex = players.first(where: { $0.element.is_user })?.offset ?? 0
-        return players
-            .map { idx, player in
-                let relative = (idx - userIndex + players.count) % players.count
-                return SeatInfo(absoluteIndex: idx, relativeIndex: relative, player: player)
-            }
-            .sorted { $0.relativeIndex < $1.relativeIndex }
+        seatInfos(for: vm.state.players)
     }
 
     var body: some View {
         GeometryReader { rootGeo in
-            let headerHeight: CGFloat = 126
-            let contentHeight = max(360, rootGeo.size.height - headerHeight - 24)
-            let tableSize = clamp(min(rootGeo.size.width * 0.62, contentHeight), min: 360, max: 760)
-            let panelWidth = max(320, rootGeo.size.width - tableSize - 34)
-
             VStack(spacing: 6) {
                 HStack(alignment: .top, spacing: 12) {
                     VStack(alignment: .leading, spacing: 3) {
@@ -803,107 +785,140 @@ struct ContentView: View {
                     .frame(maxWidth: .infinity)
                     .frame(height: 36)
 
-                HStack(alignment: .top, spacing: 10) {
-                    GeometryReader { geo in
-                        ZStack {
-                            PokerTableBackground()
+                GeometryReader { contentGeo in
+                    let contentHeight = max(360, contentGeo.size.height)
+                    let tableBottomOverflow = tableBottomOverflowAllowance()
+                    let tableSize = clamp(min(contentGeo.size.width * 0.62, contentHeight - tableBottomOverflow), min: 360, max: 760)
+                    let tableViewportHeight = tableSize + tableBottomOverflow
+                    let panelWidth = max(320, contentGeo.size.width - tableSize - 10)
 
-                            CenterBoardView(
-                            board: vm.state.board,
-                            pot: vm.state.pot,
-                            street: vm.state.street,
-                            winnerName: vm.state.winner_name,
-                            winnerNames: vm.state.winner_names,
-                            handOver: vm.state.hand_over,
-                            animateBoardChange: !vm.disableBoardAnimation
-                        )
-                            .position(x: geo.size.width * 0.5, y: geo.size.height * 0.50)
-                            .zIndex(5)
+                    HStack(alignment: .top, spacing: 10) {
+                        GeometryReader { geo in
+                            let boardSize = CGSize(width: geo.size.width, height: tableSize)
+                            let viewportHeight = geo.size.height
+                            ZStack {
+                                PokerTableBackground()
 
-                            ForEach(seats) { seat in
-                                PlayerSeatView(
-                                    player: seat.player,
-                                    roleLabel: seatRoleLabel(seat.absoluteIndex),
-                                    isToAct: !vm.state.hand_over && vm.state.to_act == seat.absoluteIndex,
-                                    isWinner: vm.state.hand_over && vm.state.winner_names.contains(seat.player.name),
-                                    handOver: vm.state.hand_over,
-                                    knownCards: vm.visibleCards(for: seat.absoluteIndex),
-                                    showdownRank: vm.showdownRank(for: seat.absoluteIndex)
-                                )
-                                .position(seatPosition(for: seat, tableSize: geo.size, totalSeats: max(seats.count, 2)))
-                                .zIndex(seat.player.is_user ? 12 : 10)
-                            }
+                                CenterBoardView(
+                                board: vm.state.board,
+                                pot: vm.state.pot,
+                                street: vm.state.street,
+                                winnerName: vm.state.winner_name,
+                                winnerNames: vm.state.winner_names,
+                                handOver: vm.state.hand_over,
+                                animateBoardChange: !vm.disableBoardAnimation
+                            )
+                                .position(x: boardSize.width * 0.5, y: boardSize.height * 0.50)
+                                .zIndex(5)
 
-                            ForEach(flyingChips) { chip in
-                                FlyingChipView(amount: chip.amount, tint: chip.tint)
+                                ForEach(seats) { seat in
+                                    PlayerSeatView(
+                                        player: seat.player,
+                                        roleLabel: seatRoleLabel(for: seat.absoluteIndex, state: vm.state),
+                                        isToAct: !vm.state.hand_over && vm.state.to_act == seat.absoluteIndex,
+                                        isWinner: vm.state.hand_over && vm.state.winner_names.contains(seat.player.name),
+                                        handOver: vm.state.hand_over,
+                                        knownCards: vm.visibleCards(for: seat.absoluteIndex),
+                                        showdownRank: vm.showdownRank(for: seat.absoluteIndex)
+                                    )
                                     .position(
-                                        x: chip.start.x + (chip.end.x - chip.start.x) * chip.progress,
-                                        y: chip.start.y + (chip.end.y - chip.start.y) * chip.progress
+                                        seatPosition(
+                                            for: seat,
+                                            seats: seats,
+                                            boardSize: boardSize,
+                                            viewportHeight: viewportHeight
+                                        )
                                     )
-                                    .scaleEffect(0.92 + (0.12 * chip.progress))
-                                    .opacity(chip.opacity)
-                                    .zIndex(50)
-                            }
+                                    .zIndex(seat.player.is_user ? 12 : 10)
+                                }
 
-                            ForEach(botSwapTokens) { token in
-                                if let seat = seats.first(where: { $0.absoluteIndex == token.seat }) {
-                                    BotSwapOverlayView(
-                                        token: token,
-                                        size: seatCardSize(for: seat)
-                                    )
-                                    .position(point(forAbsoluteSeat: token.seat, tableSize: geo.size))
-                                    .zIndex(60)
+                                ForEach(flyingChips) { chip in
+                                    FlyingChipView(amount: chip.amount, tint: chip.tint)
+                                        .position(
+                                            x: chip.start.x + (chip.end.x - chip.start.x) * chip.progress,
+                                            y: chip.start.y + (chip.end.y - chip.start.y) * chip.progress
+                                        )
+                                        .scaleEffect(0.92 + (0.12 * chip.progress))
+                                        .opacity(chip.opacity)
+                                        .zIndex(50)
+                                }
+
+                                ForEach(botSwapTokens) { token in
+                                    if let seat = seats.first(where: { $0.absoluteIndex == token.seat }) {
+                                        BotSwapOverlayView(
+                                            token: token,
+                                            size: seatCardSize(for: seat)
+                                        )
+                                        .position(
+                                            point(
+                                                forAbsoluteSeat: token.seat,
+                                                seats: seats,
+                                                boardSize: boardSize,
+                                                viewportHeight: viewportHeight
+                                            )
+                                        )
+                                        .zIndex(60)
+                                    }
+                                }
+
+                                ForEach(userBustTokens) { token in
+                                    UserBustOverlayView(token: token)
+                                        .position(
+                                            point(
+                                                forAbsoluteSeat: token.seat,
+                                                seats: seats,
+                                                boardSize: boardSize,
+                                                viewportHeight: viewportHeight
+                                            )
+                                        )
+                                        .zIndex(70)
                                 }
                             }
-
-                            ForEach(userBustTokens) { token in
-                                UserBustOverlayView(token: token)
-                                    .position(point(forAbsoluteSeat: token.seat, tableSize: geo.size))
-                                    .zIndex(70)
+                            .onReceive(vm.$chipBatch.compactMap { $0 }) { batch in
+                                playChipBatch(batch, boardSize: boardSize, viewportHeight: viewportHeight)
+                            }
+                            .onReceive(vm.$botSwapBatch.compactMap { $0 }) { batch in
+                                playBotSwapBatch(batch)
+                            }
+                            .onReceive(vm.$userBustEvent.compactMap { $0 }) { event in
+                                playUserBustEvent(event)
                             }
                         }
-                        .onReceive(vm.$chipBatch.compactMap { $0 }) { batch in
-                            playChipBatch(batch, tableSize: geo.size)
-                        }
-                        .onReceive(vm.$botSwapBatch.compactMap { $0 }) { batch in
-                            playBotSwapBatch(batch)
-                        }
-                        .onReceive(vm.$userBustEvent.compactMap { $0 }) { event in
-                            playUserBustEvent(event)
-                        }
-                    }
-                    .frame(width: tableSize, height: tableSize)
+                        .frame(width: tableSize, height: tableViewportHeight, alignment: .top)
 
-                    ActionPanel(
-                        actions: vm.actions,
-                        feedback: vm.lastFeedback,
-                        boardRead: vm.liveBoardRead,
-                        decisionTrail: vm.currentHandTrail,
-                        handSummary: vm.handSummary,
-                        handOver: vm.state.hand_over,
-                        winnerName: vm.state.winner_name,
-                        winnerNames: vm.state.winner_names,
-                        canUndo: vm.canUndo,
-                        isUsersTurn: vm.isUsersTurn,
-                        isPlaybackRunning: vm.isPlaybackRunning,
-                        nextActorName: vm.playerName(at: vm.state.to_act),
-                        userStack: vm.currentUserStack,
-                        onTap: { action in vm.take(action: action) },
-                        onUndo: { vm.undoLastDecision() },
-                        onRunToShowdown: { vm.runToShowdown() },
-                        onNextHand: { vm.nextHand() }
-                    )
-                    .frame(width: panelWidth, height: tableSize, alignment: .top)
-                    .background(
-                        RoundedRectangle(cornerRadius: 14, style: .continuous)
-                            .fill(Color.black.opacity(0.03))
-                    )
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 14, style: .continuous)
-                            .stroke(Color.black.opacity(0.08), lineWidth: 1)
-                    )
+                        ActionPanel(
+                            actions: vm.actions,
+                            feedback: vm.lastFeedback,
+                            recentFeedback: vm.stickyFeedback,
+                            coachNote: vm.stickyCoachNote,
+                            boardReadPresentation: vm.boardReadPresentation,
+                            decisionTrail: vm.currentHandTrail,
+                            handSummary: vm.handSummary,
+                            handOver: vm.state.hand_over,
+                            winnerName: vm.state.winner_name,
+                            winnerNames: vm.state.winner_names,
+                            canUndo: vm.canUndo,
+                            isUsersTurn: vm.isUsersTurn,
+                            isPlaybackRunning: vm.isPlaybackRunning,
+                            nextActorName: vm.playerName(at: vm.state.to_act),
+                            userStack: vm.currentUserStack,
+                            onTap: { action in vm.take(action: action) },
+                            onUndo: { vm.undoLastDecision() },
+                            onRunToShowdown: { vm.runToShowdown() },
+                            onNextHand: { vm.nextHand() }
+                        )
+                        .frame(width: panelWidth, height: tableViewportHeight, alignment: .top)
+                        .background(
+                            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                .fill(Color.black.opacity(0.03))
+                        )
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                .stroke(Color.black.opacity(0.08), lineWidth: 1)
+                        )
+                    }
+                    .frame(width: contentGeo.size.width, height: contentGeo.size.height, alignment: .topLeading)
                 }
-                .frame(maxWidth: .infinity, maxHeight: contentHeight, alignment: .top)
             }
             .padding(12)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
@@ -922,122 +937,13 @@ struct ContentView: View {
         }
     }
 
-    private func seatRoleLabel(_ idx: Int) -> String? {
-        var labels: [String] = []
-        if idx == vm.state.dealer_idx {
-            labels.append("D")
-        }
-        if idx == vm.state.sb_idx {
-            labels.append("SB")
-        }
-        if idx == vm.state.bb_idx {
-            labels.append("BB")
-        }
-        return labels.isEmpty ? nil : labels.joined(separator: " ")
+    private func potPoint(for boardSize: CGSize) -> CGPoint {
+        CGPoint(x: boardSize.width * 0.5, y: boardSize.height * 0.55)
     }
 
-    private func seatPosition(for seat: SeatInfo, tableSize: CGSize, totalSeats: Int) -> CGPoint {
-        if seat.player.is_user {
-            let desired = CGPoint(x: tableSize.width * 0.5, y: tableSize.height * 0.74)
-            return clampedSeatPoint(desired: desired, for: seat, tableSize: tableSize)
-        }
-
-        let opponents = max(1, totalSeats - 1)
-        let oppIndex = max(0, seat.relativeIndex - 1)
-        let compact = tableSize.width < 560
-
-        let anchors: [CGPoint]
-        switch opponents {
-        case 1:
-            anchors = [CGPoint(x: 0.50, y: compact ? 0.19 : 0.12)]
-        case 2:
-            anchors = [
-                CGPoint(x: 0.24, y: compact ? 0.19 : 0.12), // clockwise next from user (left side)
-                CGPoint(x: 0.76, y: compact ? 0.19 : 0.12)
-            ]
-        case 3:
-            anchors = [
-                CGPoint(x: 0.18, y: compact ? 0.76 : 0.75),
-                CGPoint(x: 0.50, y: compact ? 0.19 : 0.12),
-                CGPoint(x: 0.82, y: compact ? 0.76 : 0.75)
-            ]
-        case 4:
-            anchors = [
-                CGPoint(x: 0.16, y: compact ? 0.76 : 0.75),
-                CGPoint(x: 0.22, y: compact ? 0.19 : 0.12),
-                CGPoint(x: 0.78, y: compact ? 0.19 : 0.12),
-                CGPoint(x: 0.84, y: compact ? 0.76 : 0.75)
-            ]
-        case 5:
-            // 6-max desktop anchor profile in clockwise order from user.
-            anchors = [
-                CGPoint(x: 0.14, y: compact ? 0.76 : 0.75), // bottom-left (aligned with user midline)
-                CGPoint(x: 0.22, y: compact ? 0.19 : 0.12), // top-left
-                CGPoint(x: 0.50, y: compact ? 0.19 : 0.12), // top-center
-                CGPoint(x: 0.78, y: compact ? 0.19 : 0.12), // top-right
-                CGPoint(x: 0.86, y: compact ? 0.76 : 0.75)  // bottom-right (aligned with user midline)
-            ]
-        default:
-            anchors = []
-        }
-
-        if oppIndex < anchors.count {
-            let point = anchors[oppIndex]
-            let desired = CGPoint(x: tableSize.width * point.x, y: tableSize.height * point.y)
-            return clampedSeatPoint(desired: desired, for: seat, tableSize: tableSize)
-        }
-
-        // Fallback for larger tables: compressed ring that preserves board visibility.
-        let angleDeg: Double
-        if opponents == 1 {
-            angleDeg = 90
-        } else {
-            let start = 210.0
-            let end = -30.0
-            let step = (end - start) / Double(opponents - 1)
-            angleDeg = start + step * Double(oppIndex)
-        }
-        let angle = angleDeg * .pi / 180.0
-        let x = 0.5 + (compact ? 0.34 : 0.37) * cos(angle)
-        let y = 0.57 - (compact ? 0.33 : 0.36) * sin(angle)
-        let desired = CGPoint(x: tableSize.width * x, y: tableSize.height * y)
-        return clampedSeatPoint(desired: desired, for: seat, tableSize: tableSize)
-    }
-
-    private func seatCardSize(for seat: SeatInfo) -> CGSize {
-        CGSize(
-            width: seat.player.is_user ? 212 : 164,
-            height: seat.player.is_user ? 223 : 212
-        )
-    }
-
-    private func clampedSeatPoint(desired: CGPoint, for seat: SeatInfo, tableSize: CGSize) -> CGPoint {
-        let seatSize = seatCardSize(for: seat)
-        let margin: CGFloat = 6
-        let minX = seatSize.width * 0.5 + margin
-        let maxX = tableSize.width - seatSize.width * 0.5 - margin
-        let minY = seatSize.height * 0.5 + margin
-        let maxY = tableSize.height - seatSize.height * 0.5 - margin
-        return CGPoint(
-            x: clamp(desired.x, min: minX, max: maxX),
-            y: clamp(desired.y, min: minY, max: maxY)
-        )
-    }
-
-    private func potPoint(for tableSize: CGSize) -> CGPoint {
-        CGPoint(x: tableSize.width * 0.5, y: tableSize.height * 0.55)
-    }
-
-    private func point(forAbsoluteSeat idx: Int, tableSize: CGSize) -> CGPoint {
-        guard let seat = seats.first(where: { $0.absoluteIndex == idx }) else {
-            return CGPoint(x: tableSize.width * 0.5, y: tableSize.height * 0.86)
-        }
-        return seatPosition(for: seat, tableSize: tableSize, totalSeats: max(seats.count, 2))
-    }
-
-    private func anchorPoint(for seat: Int?, tableSize: CGSize) -> CGPoint {
-        guard let seat else { return potPoint(for: tableSize) }
-        return point(forAbsoluteSeat: seat, tableSize: tableSize)
+    private func anchorPoint(for seat: Int?, boardSize: CGSize, viewportHeight: CGFloat) -> CGPoint {
+        guard let seat else { return potPoint(for: boardSize) }
+        return point(forAbsoluteSeat: seat, seats: seats, boardSize: boardSize, viewportHeight: viewportHeight)
     }
 
     private func updateChip(_ id: UUID, mutate: (inout FlyingChipToken) -> Void) {
@@ -1055,11 +961,11 @@ struct ContentView: View {
         mutate(&userBustTokens[idx])
     }
 
-    private func playChipBatch(_ batch: ChipMotionBatch, tableSize: CGSize) {
+    private func playChipBatch(_ batch: ChipMotionBatch, boardSize: CGSize, viewportHeight: CGFloat) {
         for (idx, event) in batch.events.enumerated() {
             let delay = Double(idx) * 0.18
-            let start = anchorPoint(for: event.fromSeat, tableSize: tableSize)
-            let end = anchorPoint(for: event.toSeat, tableSize: tableSize)
+            let start = anchorPoint(for: event.fromSeat, boardSize: boardSize, viewportHeight: viewportHeight)
+            let end = anchorPoint(for: event.toSeat, boardSize: boardSize, viewportHeight: viewportHeight)
             let tint: Color = event.toSeat == nil ? .orange : .green
             let chip = FlyingChipToken(amount: event.amount, tint: tint, start: start, end: end)
             let chipID = chip.id
@@ -1193,6 +1099,1086 @@ private struct SeatInfo: Identifiable {
 
     var id: String {
         "\(absoluteIndex)-\(player.name)"
+    }
+}
+
+private struct SeatLayoutMetrics {
+    let width: CGFloat
+    let height: CGFloat
+    let cardWidth: CGFloat
+    let cardHeight: CGFloat
+    let footerHeight: CGFloat
+    let bottomPadding: CGFloat
+    let footerLift: CGFloat
+}
+
+private func seatLayoutMetrics(isUser: Bool) -> SeatLayoutMetrics {
+    if isUser {
+        return SeatLayoutMetrics(
+            width: 196,
+            height: 210,
+            cardWidth: 56,
+            cardHeight: 68,
+            footerHeight: 36,
+            bottomPadding: 10,
+            footerLift: 10
+        )
+    }
+    return SeatLayoutMetrics(
+        width: 156,
+        height: 176,
+        cardWidth: 34,
+        cardHeight: 48,
+        footerHeight: 30,
+        bottomPadding: 5,
+        footerLift: 0
+    )
+}
+
+private func seatInfos(for players: [PublicPlayer]) -> [SeatInfo] {
+    guard !players.isEmpty else { return [] }
+    let userIndex = players.firstIndex(where: { $0.is_user }) ?? 0
+    return players.enumerated()
+        .map { idx, player in
+            let relative = (idx - userIndex + players.count) % players.count
+            return SeatInfo(absoluteIndex: idx, relativeIndex: relative, player: player)
+        }
+        .sorted { $0.relativeIndex < $1.relativeIndex }
+}
+
+private func seatCardSize(for seat: SeatInfo) -> CGSize {
+    let metrics = seatLayoutMetrics(isUser: seat.player.is_user)
+    return CGSize(width: metrics.width, height: metrics.height)
+}
+
+private func tableBottomOverflowAllowance() -> CGFloat {
+    let metrics = seatLayoutMetrics(isUser: true)
+    return max(
+        metrics.footerHeight + metrics.bottomPadding + 40,
+        metrics.height * 0.62
+    )
+}
+
+private enum SeatVerticalBand {
+    case top
+    case bottom
+}
+
+private func seatVerticalBand(for seat: SeatInfo, totalSeats: Int) -> SeatVerticalBand {
+    if seat.player.is_user {
+        return .bottom
+    }
+    if totalSeats <= 3 {
+        return .top
+    }
+    if seat.relativeIndex == 1 || seat.relativeIndex == totalSeats - 1 {
+        return .bottom
+    }
+    return .top
+}
+
+private func boardSafeRect(for boardSize: CGSize) -> CGRect {
+    let width = min(boardSize.width * 0.84, 620)
+    let height = min(boardSize.height * 0.30, 236)
+    return CGRect(
+        x: (boardSize.width - width) * 0.5,
+        y: boardSize.height * 0.50 - height * 0.5,
+        width: width,
+        height: height
+    )
+}
+
+private func clampedSeatPoint(
+    desired: CGPoint,
+    for seat: SeatInfo,
+    boardSize: CGSize,
+    viewportHeight: CGFloat,
+    totalSeats: Int
+) -> CGPoint {
+    let seatMetrics = seatLayoutMetrics(isUser: seat.player.is_user)
+    let seatSize = CGSize(width: seatMetrics.width, height: seatMetrics.height)
+    let margin: CGFloat = 8
+    let minX = seatSize.width * 0.5 + margin
+    let maxX = boardSize.width - seatSize.width * 0.5 - margin
+    let safeRect = boardSafeRect(for: boardSize)
+    let safeGap: CGFloat = seat.player.is_user ? 14 : 10
+    let bottomSafeInset: CGFloat = seat.player.is_user
+        ? max(
+            seatMetrics.footerHeight + seatMetrics.bottomPadding + seatMetrics.footerLift + 20,
+            seatMetrics.height * 0.55
+        )
+        : seatMetrics.footerHeight + 6
+    var minY = seatSize.height * 0.5 + margin
+    var maxY = viewportHeight - seatSize.height * 0.5 - margin
+
+    switch seatVerticalBand(for: seat, totalSeats: totalSeats) {
+    case .top:
+        maxY = min(maxY, safeRect.minY - seatSize.height * 0.5 - safeGap)
+    case .bottom:
+        let requiredMinY = safeRect.maxY + seatSize.height * 0.5 + safeGap
+        let hardBottomMaxY = viewportHeight - seatSize.height * 0.5 - margin
+        let preferredBottomMaxY = hardBottomMaxY - bottomSafeInset
+        minY = max(minY, requiredMinY)
+        maxY = min(maxY, max(requiredMinY, preferredBottomMaxY))
+    }
+
+    if minY > maxY {
+        let fallbackY: CGFloat
+        switch seatVerticalBand(for: seat, totalSeats: totalSeats) {
+        case .top:
+            fallbackY = seatSize.height * 0.5 + margin
+        case .bottom:
+            fallbackY = viewportHeight - seatSize.height * 0.5 - margin
+        }
+        return CGPoint(
+            x: clamp(desired.x, min: minX, max: maxX),
+            y: fallbackY
+        )
+    }
+
+    return CGPoint(
+        x: clamp(desired.x, min: minX, max: maxX),
+        y: clamp(desired.y, min: minY, max: maxY)
+    )
+}
+
+private func seatPosition(for seat: SeatInfo, seats: [SeatInfo], tableSize: CGSize) -> CGPoint {
+    seatPosition(for: seat, seats: seats, boardSize: tableSize, viewportHeight: tableSize.height)
+}
+
+private func seatPosition(
+    for seat: SeatInfo,
+    seats: [SeatInfo],
+    boardSize: CGSize,
+    viewportHeight: CGFloat
+) -> CGPoint {
+    let totalSeats = max(seats.count, 2)
+    if seat.player.is_user {
+        let desired = CGPoint(x: boardSize.width * 0.5, y: boardSize.height * 0.67)
+        return clampedSeatPoint(
+            desired: desired,
+            for: seat,
+            boardSize: boardSize,
+            viewportHeight: viewportHeight,
+            totalSeats: totalSeats
+        )
+    }
+
+    let opponents = max(1, totalSeats - 1)
+    let oppIndex = max(0, seat.relativeIndex - 1)
+    let compact = boardSize.width < 560
+
+    let anchors: [CGPoint]
+    switch opponents {
+    case 1:
+        anchors = [CGPoint(x: 0.50, y: compact ? 0.18 : 0.14)]
+    case 2:
+        anchors = [
+            CGPoint(x: 0.24, y: compact ? 0.18 : 0.14),
+            CGPoint(x: 0.76, y: compact ? 0.18 : 0.14)
+        ]
+    case 3:
+        anchors = [
+            CGPoint(x: 0.18, y: compact ? 0.74 : 0.70),
+            CGPoint(x: 0.50, y: compact ? 0.18 : 0.14),
+            CGPoint(x: 0.82, y: compact ? 0.74 : 0.70)
+        ]
+    case 4:
+        anchors = [
+            CGPoint(x: 0.16, y: compact ? 0.74 : 0.70),
+            CGPoint(x: 0.22, y: compact ? 0.18 : 0.14),
+            CGPoint(x: 0.78, y: compact ? 0.18 : 0.14),
+            CGPoint(x: 0.84, y: compact ? 0.74 : 0.70)
+        ]
+    case 5:
+        anchors = [
+            CGPoint(x: 0.14, y: compact ? 0.74 : 0.70),
+            CGPoint(x: 0.22, y: compact ? 0.18 : 0.14),
+            CGPoint(x: 0.50, y: compact ? 0.18 : 0.14),
+            CGPoint(x: 0.78, y: compact ? 0.18 : 0.14),
+            CGPoint(x: 0.86, y: compact ? 0.74 : 0.70)
+        ]
+    default:
+        anchors = []
+    }
+
+    if oppIndex < anchors.count {
+        let point = anchors[oppIndex]
+        let desired = CGPoint(x: boardSize.width * point.x, y: boardSize.height * point.y)
+        return clampedSeatPoint(
+            desired: desired,
+            for: seat,
+            boardSize: boardSize,
+            viewportHeight: viewportHeight,
+            totalSeats: totalSeats
+        )
+    }
+
+    let angleDeg: Double
+    if opponents == 1 {
+        angleDeg = 90
+    } else {
+        let start = 210.0
+        let end = -30.0
+        let step = (end - start) / Double(opponents - 1)
+        angleDeg = start + step * Double(oppIndex)
+    }
+    let angle = angleDeg * .pi / 180.0
+    let x = 0.5 + (compact ? 0.34 : 0.37) * cos(angle)
+    let y = 0.57 - (compact ? 0.33 : 0.36) * sin(angle)
+    let desired = CGPoint(x: boardSize.width * x, y: boardSize.height * y)
+    return clampedSeatPoint(
+        desired: desired,
+        for: seat,
+        boardSize: boardSize,
+        viewportHeight: viewportHeight,
+        totalSeats: totalSeats
+    )
+}
+
+private func point(forAbsoluteSeat idx: Int, seats: [SeatInfo], tableSize: CGSize) -> CGPoint {
+    point(forAbsoluteSeat: idx, seats: seats, boardSize: tableSize, viewportHeight: tableSize.height)
+}
+
+private func point(
+    forAbsoluteSeat idx: Int,
+    seats: [SeatInfo],
+    boardSize: CGSize,
+    viewportHeight: CGFloat
+) -> CGPoint {
+    guard let seat = seats.first(where: { $0.absoluteIndex == idx }) else {
+        return CGPoint(x: boardSize.width * 0.5, y: viewportHeight * 0.86)
+    }
+    return seatPosition(for: seat, seats: seats, boardSize: boardSize, viewportHeight: viewportHeight)
+}
+
+private func seatRoleLabel(for idx: Int, state: PublicState) -> String? {
+    var labels: [String] = []
+    if idx == state.dealer_idx { labels.append("D") }
+    if idx == state.sb_idx { labels.append("SB") }
+    if idx == state.bb_idx { labels.append("BB") }
+    return labels.isEmpty ? nil : labels.joined(separator: " ")
+}
+
+enum LayoutDebugScene: String, CaseIterable {
+    case liveTurn = "live_turn"
+    case allInTurn = "all_in_turn"
+    case showdown = "showdown"
+    case longNames = "long_names"
+    case longFooterPills = "long_footer_pills"
+    case footerShowdown = "footer_showdown"
+    case coachTurn = "coach_turn"
+
+    static let preReleaseCases: [LayoutDebugScene] = [
+        .liveTurn,
+        .allInTurn,
+        .showdown,
+        .footerShowdown,
+        .longNames,
+        .longFooterPills,
+        .coachTurn
+    ]
+}
+
+struct LayoutDebugHarnessView: View {
+    let scene: LayoutDebugScene
+
+    private var model: LayoutDebugModel {
+        LayoutDebugModel.make(scene: scene)
+    }
+
+    private var seats: [SeatInfo] {
+        seatInfos(for: model.state.players)
+    }
+
+    var body: some View {
+        GeometryReader { rootGeo in
+            VStack(spacing: 6) {
+                HStack(alignment: .top, spacing: 12) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Layout Debug • \(scene.rawValue)")
+                            .font(.headline.weight(.semibold))
+                        Text(model.subtitle)
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                            .lineLimit(2)
+                    }
+
+                    Spacer()
+
+                    Text(model.sessionLabel)
+                        .font(.title3.weight(.semibold))
+                        .foregroundStyle(.orange)
+                }
+
+                ActionLogTicker(logs: model.state.action_log)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 36)
+
+                GeometryReader { contentGeo in
+                    let contentHeight = max(360, contentGeo.size.height)
+                    let tableBottomOverflow = tableBottomOverflowAllowance()
+                    let tableSize = clamp(min(contentGeo.size.width * 0.62, contentHeight - tableBottomOverflow), min: 360, max: 760)
+                    let tableViewportHeight = tableSize + tableBottomOverflow
+                    let panelWidth = max(320, contentGeo.size.width - tableSize - 10)
+
+                    HStack(alignment: .top, spacing: 10) {
+                        GeometryReader { geo in
+                            let boardSize = CGSize(width: geo.size.width, height: tableSize)
+                            let viewportHeight = geo.size.height
+                            ZStack {
+                                PokerTableBackground()
+
+                                CenterBoardView(
+                                    board: model.state.board,
+                                    pot: model.state.pot,
+                                    street: model.state.street,
+                                    winnerName: model.state.winner_name,
+                                    winnerNames: model.state.winner_names,
+                                    handOver: model.state.hand_over,
+                                    animateBoardChange: false
+                                )
+                                .position(x: boardSize.width * 0.5, y: boardSize.height * 0.50)
+                                .zIndex(5)
+
+                                ForEach(seats) { seat in
+                                    PlayerSeatView(
+                                        player: seat.player,
+                                        roleLabel: seatRoleLabel(for: seat.absoluteIndex, state: model.state),
+                                        isToAct: !model.state.hand_over && model.state.to_act == seat.absoluteIndex,
+                                        isWinner: model.state.hand_over && model.state.winner_names.contains(seat.player.name),
+                                        handOver: model.state.hand_over,
+                                        knownCards: visibleCards(for: seat.absoluteIndex),
+                                        showdownRank: showdownRank(for: seat.absoluteIndex)
+                                    )
+                                    .position(
+                                        seatPosition(
+                                            for: seat,
+                                            seats: seats,
+                                            boardSize: boardSize,
+                                            viewportHeight: viewportHeight
+                                        )
+                                    )
+                                    .zIndex(seat.player.is_user ? 12 : 10)
+                                }
+                            }
+                        }
+                        .frame(width: tableSize, height: tableViewportHeight, alignment: .top)
+
+                        ActionPanel(
+                            actions: model.actions,
+                            feedback: model.feedback,
+                            recentFeedback: model.recentFeedback,
+                            coachNote: model.coachNote,
+                            boardReadPresentation: model.boardReadPresentation,
+                            decisionTrail: model.decisionTrail,
+                            handSummary: model.handSummary,
+                            handOver: model.state.hand_over,
+                            winnerName: model.state.winner_name,
+                            winnerNames: model.state.winner_names,
+                            canUndo: false,
+                            isUsersTurn: model.isUsersTurn,
+                            isPlaybackRunning: false,
+                            nextActorName: model.nextActorName,
+                            userStack: model.userStack,
+                            onTap: { _ in },
+                            onUndo: {},
+                            onRunToShowdown: {},
+                            onNextHand: {}
+                        )
+                        .frame(width: panelWidth, height: tableViewportHeight, alignment: .top)
+                        .background(
+                            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                .fill(Color.black.opacity(0.03))
+                        )
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                .stroke(Color.black.opacity(0.08), lineWidth: 1)
+                        )
+                    }
+                    .frame(width: contentGeo.size.width, height: contentGeo.size.height, alignment: .topLeading)
+                }
+            }
+            .padding(12)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        }
+    }
+
+    private func visibleCards(for seatIndex: Int) -> [String]? {
+        guard seatIndex >= 0, seatIndex < model.state.players.count else { return nil }
+        let player = model.state.players[seatIndex]
+        if !player.hole_cards.isEmpty {
+            return player.hole_cards
+        }
+        if player.is_user {
+            return model.state.user_hole
+        }
+        return nil
+    }
+
+    private func showdownRank(for seatIndex: Int) -> String? {
+        guard seatIndex >= 0, seatIndex < model.state.players.count else { return nil }
+        let player = model.state.players[seatIndex]
+        if let rank = player.hand_rank, !rank.isEmpty {
+            return rank
+        }
+        return nil
+    }
+}
+
+private struct LayoutDebugModel {
+    let subtitle: String
+    let sessionLabel: String
+    let state: PublicState
+    let actions: [ActionEV]
+    let feedback: DecisionFeedback?
+    let recentFeedback: DecisionFeedback?
+    let coachNote: CoachNoteSnapshot?
+    let boardReadPresentation: BoardReadPresentation
+    let decisionTrail: [HandDecisionLine]
+    let handSummary: HandSummary?
+    let nextActorName: String
+    let userStack: Int
+    let isUsersTurn: Bool
+
+    static func make(scene: LayoutDebugScene) -> LayoutDebugModel {
+        switch scene {
+        case .liveTurn:
+            return liveTurn()
+        case .allInTurn:
+            return allInTurn()
+        case .showdown:
+            return footerShowdown()
+        case .footerShowdown:
+            return foldedUserFooterShowdown()
+        case .longNames:
+            return longNames()
+        case .longFooterPills:
+            return longFooterPills()
+        case .coachTurn:
+            return coachTurn()
+        }
+    }
+
+    private static func footerShowdown() -> LayoutDebugModel {
+        let players = [
+            PublicPlayer(name: "Spewzy", stack: 4822, hand_delta: -30, in_hand: false, last_action: "fold", is_user: false, archetype: "Maniac", tightness: 0.2, aggression: 0.9, calliness: 0.5, skill: 0.5, committed_street: 0, contributed_hand: 30, hole_cards: ["2h", "5d"], hand_rank: "Two Pairs"),
+            PublicPlayer(name: "Turbo Ty", stack: 146, hand_delta: -593, in_hand: true, last_action: "call 91", is_user: false, archetype: "LAG", tightness: 0.3, aggression: 0.7, calliness: 0.6, skill: 0.6, committed_street: 0, contributed_hand: 593, hole_cards: ["9h", "Jd"], hand_rank: "One Pair"),
+            PublicPlayer(name: "Range Ranger", stack: 237, hand_delta: -14, in_hand: false, last_action: "fold", is_user: false, archetype: "Prober", tightness: 0.4, aggression: 0.6, calliness: 0.4, skill: 0.7, committed_street: 0, contributed_hand: 14, hole_cards: ["7h", "3d"], hand_rank: "One Pair"),
+            PublicPlayer(name: "SnapRaiser", stack: 1456, hand_delta: 0, in_hand: false, last_action: "fold pre", is_user: false, archetype: "LAG", tightness: 0.3, aggression: 0.8, calliness: 0.5, skill: 0.5, committed_street: 0, contributed_hand: 0, hole_cards: ["Ah", "Ks"], hand_rank: "One Pair"),
+            PublicPlayer(name: "You", stack: 1731, hand_delta: 1231, in_hand: true, last_action: "raise to 275", is_user: true, archetype: "Hero", tightness: 0.0, aggression: 0.0, calliness: 0.0, skill: 0.0, committed_street: 0, contributed_hand: 500, hole_cards: ["6d", "6s"], hand_rank: "Full House"),
+            PublicPlayer(name: "Chad Blaze", stack: 0, hand_delta: -594, in_hand: true, last_action: "bet 91", is_user: false, archetype: "LAG", tightness: 0.3, aggression: 0.8, calliness: 0.6, skill: 0.6, committed_street: 0, contributed_hand: 594, hole_cards: ["4c", "Qd"], hand_rank: "Two Pairs")
+        ]
+
+        let state = PublicState(
+            pot: 1731,
+            sb: 1,
+            bb: 2,
+            dealer_idx: 2,
+            sb_idx: 5,
+            bb_idx: 4,
+            street: "showdown",
+            board: ["Th", "Tc", "2c", "6h", "Qs"],
+            players: players,
+            to_act: 0,
+            to_call: 0,
+            user_hole: ["6d", "6s"],
+            hand_over: true,
+            winner_name: "You",
+            winner_names: ["You"],
+            action_log: [
+                "River: Qs",
+                "Chad Blaze bets 91",
+                "You raise to 275",
+                "Turbo Ty calls 91",
+                "Showdown"
+            ]
+        )
+
+        let handSummary = HandSummary(
+            decisions: 2,
+            chosenEVTotal: 18.3,
+            bestEVTotal: 27.5,
+            totalRegret: 9.2,
+            stackDelta: 1231,
+            biggestLeak: HandDecisionLine(
+                street: "turn",
+                chosenAction: "call",
+                bestAction: "raise_100_pot",
+                regret: 9.2,
+                equivalenceThreshold: 5.0
+            )
+        )
+
+        return LayoutDebugModel(
+            subtitle: "Worst-case showdown footer harness",
+            sessionLabel: "Session +$1,231",
+            state: state,
+            actions: [],
+            feedback: nil,
+            recentFeedback: nil,
+            coachNote: nil,
+            boardReadPresentation: BoardReadPresentation(
+                title: "Decision Node + Hand Read",
+                caption: "Decision node: TURN • Board Th Tc 2c 6h • Pot $271 • To call $91",
+                read: LiveBoardRead(
+                    madeHand: "Full House",
+                    drawOutlook: "River complete: no future cards to come.",
+                    boardTexture: "Paired board with flush draws possible.",
+                    straightPressure: "Straight pressure resolved on river.",
+                    blockerNote: "No major blocker edge in this node."
+                )
+            ),
+            decisionTrail: [
+                HandDecisionLine(street: "flop", chosenAction: "call", bestAction: "raise_50_pot", regret: 2.1, equivalenceThreshold: 5.0),
+                HandDecisionLine(street: "turn", chosenAction: "call", bestAction: "raise_100_pot", regret: 9.2, equivalenceThreshold: 5.0)
+            ],
+            handSummary: handSummary,
+            nextActorName: "Showdown",
+            userStack: 1731,
+            isUsersTurn: false
+        )
+    }
+
+    private static func foldedUserFooterShowdown() -> LayoutDebugModel {
+        let players = [
+            PublicPlayer(name: "Table Goblin 2", stack: 1496, hand_delta: 128, in_hand: true, last_action: "bet 39", is_user: false, archetype: "Balanced", tightness: 0.5, aggression: 0.5, calliness: 0.5, skill: 0.6, committed_street: 0, contributed_hand: 69, hole_cards: ["Ks", "Jh"], hand_rank: "Two Pairs"),
+            PublicPlayer(name: "Foldzilla", stack: 475, hand_delta: 0, in_hand: false, last_action: "fold pre", is_user: false, archetype: "Rock", tightness: 0.8, aggression: 0.2, calliness: 0.2, skill: 0.6, committed_street: 0, contributed_hand: 0, hole_cards: ["5s", "3c"], hand_rank: "One Pair"),
+            PublicPlayer(name: "Grandma Nits", stack: 1129, hand_delta: -67, in_hand: true, last_action: "call 39", is_user: false, archetype: "Rock", tightness: 0.8, aggression: 0.2, calliness: 0.3, skill: 0.5, committed_street: 0, contributed_hand: 67, hole_cards: ["6c", "8c"], hand_rank: "High Card"),
+            PublicPlayer(name: "Foldzilla Jr", stack: 1340, hand_delta: 0, in_hand: false, last_action: "fold pre", is_user: false, archetype: "Rock", tightness: 0.8, aggression: 0.2, calliness: 0.2, skill: 0.5, committed_street: 0, contributed_hand: 0, hole_cards: ["5c", "Kh"], hand_rank: "One Pair"),
+            PublicPlayer(name: "You", stack: 3543, hand_delta: -27, in_hand: false, last_action: "fold", is_user: true, archetype: "Hero", tightness: 0.0, aggression: 0.0, calliness: 0.0, skill: 0.0, committed_street: 0, contributed_hand: 27, hole_cards: ["6d", "2c"], hand_rank: "High Card"),
+            PublicPlayer(name: "Table Goblin", stack: 488, hand_delta: -34, in_hand: false, last_action: "fold", is_user: false, archetype: "Balanced", tightness: 0.5, aggression: 0.5, calliness: 0.5, skill: 0.6, committed_street: 0, contributed_hand: 34, hole_cards: ["7d", "6h"], hand_rank: "One Pair")
+        ]
+
+        let state = PublicState(
+            pot: 197,
+            sb: 1,
+            bb: 2,
+            dealer_idx: 5,
+            sb_idx: 4,
+            bb_idx: 0,
+            street: "showdown",
+            board: ["7s", "Qc", "Kd", "Jc", "3h"],
+            players: players,
+            to_act: 0,
+            to_call: 0,
+            user_hole: ["6d", "2c"],
+            hand_over: true,
+            winner_name: "Table Goblin 2",
+            winner_names: ["Table Goblin 2"],
+            action_log: [
+                "River: 3h",
+                "Table Goblin 2 bets 39",
+                "Grandma Nits calls 39",
+                "Showdown"
+            ]
+        )
+
+        return LayoutDebugModel(
+            subtitle: "Folded-user showdown footer clearance",
+            sessionLabel: "Session -$27",
+            state: state,
+            actions: [],
+            feedback: nil,
+            recentFeedback: nil,
+            coachNote: nil,
+            boardReadPresentation: BoardReadPresentation(
+                title: "Decision Node + Hand Read",
+                caption: "Decision node: TURN • Board 7s Qc Kd Jc • Pot $119 • To call $39",
+                read: LiveBoardRead(
+                    madeHand: "High Card",
+                    drawOutlook: "River complete: no future cards to come.",
+                    boardTexture: "Broadway-heavy board with one flush draw lane.",
+                    straightPressure: "Straight pressure resolved on river.",
+                    blockerNote: "Your folded line leaves weak showdown value at the node."
+                )
+            ),
+            decisionTrail: [
+                HandDecisionLine(street: "turn", chosenAction: "fold", bestAction: "check/call", regret: 27.0, equivalenceThreshold: 5.0)
+            ],
+            handSummary: HandSummary(
+                decisions: 1,
+                chosenEVTotal: -27.0,
+                bestEVTotal: 0.0,
+                totalRegret: 27.0,
+                stackDelta: -27,
+                biggestLeak: HandDecisionLine(
+                    street: "turn",
+                    chosenAction: "fold",
+                    bestAction: "check/call",
+                    regret: 27.0,
+                    equivalenceThreshold: 5.0
+                )
+            ),
+            nextActorName: "Showdown",
+            userStack: 3543,
+            isUsersTurn: false
+        )
+    }
+
+    private static func liveTurn() -> LayoutDebugModel {
+        let actions = [
+            sampleAction(action: "fold", amount: 0, ev: -18.4, evGap: 71.8),
+            sampleAction(action: "call", amount: 68, ev: 11.8, evGap: 41.6),
+            sampleAction(action: "raise_min", amount: 112, ev: 32.4, evGap: 21.0),
+            sampleAction(action: "raise_half_pot", amount: 203, ev: 53.4, evGap: 0.0),
+            sampleAction(action: "raise_pot", amount: 338, ev: 36.7, evGap: 16.7)
+        ]
+
+        let players = [
+            player(name: "Solver Chad 2", stack: 480, handDelta: -20, inHand: true, lastAction: "bet 68", archetype: "Prober", committed: 68, contributed: 20),
+            player(name: "MemeGoblin", stack: 500, handDelta: 0, inHand: false, lastAction: "fold pre", archetype: "Balanced", committed: 0, contributed: 0),
+            player(name: "Edge Lord", stack: 485, handDelta: -15, inHand: true, lastAction: "call 68", archetype: "Prober", committed: 68, contributed: 15),
+            player(name: "Solver Chad", stack: 490, handDelta: -10, inHand: true, lastAction: "in pot", archetype: "Prober", committed: 0, contributed: 10),
+            player(name: "You", stack: 490, handDelta: -10, inHand: true, lastAction: "in pot", isUser: true, archetype: "Hero", committed: 0, contributed: 10, hole: ["7s", "6s"]),
+            player(name: "Alpha Ace", stack: 500, handDelta: 0, inHand: false, lastAction: "fold pre", archetype: "LAG", committed: 0, contributed: 0)
+        ]
+
+        return LayoutDebugModel(
+            subtitle: "Live-turn seat spacing and pot clearance",
+            sessionLabel: "Session -$42",
+            state: state(
+                pot: 271,
+                dealer: 3,
+                sbIdx: 0,
+                bbIdx: 4,
+                street: "turn",
+                board: ["4c", "Jd", "Kc", "5s"],
+                players: players,
+                toAct: 4,
+                toCall: 68,
+                userHole: ["7s", "6s"],
+                handOver: false,
+                actionLog: [
+                    "Turn: 5s",
+                    "Solver Chad 2 bets 68",
+                    "Edge Lord calls 68",
+                    "Your decision: call 68 into pot 339"
+                ]
+            ),
+            actions: actions,
+            feedback: nil,
+            recentFeedback: nil,
+            coachNote: nil,
+            boardReadPresentation: BoardReadPresentation(
+                title: "Live Board + Hand Read",
+                caption: nil,
+                read: boardRead(
+                    madeHand: "High Card",
+                    drawOutlook: "Open-ended straight draw with live river pressure.",
+                    boardTexture: "Two-club board with connected middling structure.",
+                    straightPressure: "Straight draws are active on both sides.",
+                    blockerNote: "You block some six-seven continue lines."
+                )
+            ),
+            decisionTrail: [
+                HandDecisionLine(street: "flop", chosenAction: "check", bestAction: "check", regret: 0, equivalenceThreshold: 5)
+            ],
+            handSummary: nil,
+            nextActorName: "You",
+            userStack: 490,
+            isUsersTurn: true
+        )
+    }
+
+    private static func allInTurn() -> LayoutDebugModel {
+        let actions = [
+            sampleAction(action: "fold", amount: 0, ev: 0.0, evGap: 182.4),
+            sampleAction(action: "check/call", amount: 214, ev: 182.4, evGap: 0.0)
+        ]
+
+        let players = [
+            player(name: "AllIn Andy", stack: 0, handDelta: -604, inHand: true, lastAction: "bet 214", archetype: "Maniac", committed: 214, contributed: 604),
+            player(name: "Tank Turtle", stack: 644, handDelta: -22, inHand: false, lastAction: "fold pre", archetype: "Rock", committed: 0, contributed: 22),
+            player(name: "CallMeBro", stack: 982, handDelta: -84, inHand: true, lastAction: "fold", archetype: "Calling Station", committed: 0, contributed: 84),
+            player(name: "Sticky Ricky", stack: 1140, handDelta: -91, inHand: false, lastAction: "fold turn", archetype: "Calling Station", committed: 0, contributed: 91),
+            player(name: "You", stack: 214, handDelta: -286, inHand: true, lastAction: "call or fold", isUser: true, archetype: "Hero", committed: 0, contributed: 286, hole: ["As", "Qc"]),
+            player(name: "Range Ranger", stack: 1266, handDelta: -147, inHand: false, lastAction: "fold flop", archetype: "Prober", committed: 0, contributed: 147)
+        ]
+
+        return LayoutDebugModel(
+            subtitle: "All-in turn decision with capped user stack",
+            sessionLabel: "Session +$318",
+            state: state(
+                pot: 1186,
+                dealer: 5,
+                sbIdx: 0,
+                bbIdx: 4,
+                street: "turn",
+                board: ["Ah", "Qs", "9d", "2c"],
+                players: players,
+                toAct: 4,
+                toCall: 214,
+                userHole: ["As", "Qc"],
+                handOver: false,
+                actionLog: [
+                    "Turn: 2c",
+                    "AllIn Andy bets 214",
+                    "Your decision: call 214 into pot 1400"
+                ]
+            ),
+            actions: actions,
+            feedback: nil,
+            recentFeedback: nil,
+            coachNote: nil,
+            boardReadPresentation: BoardReadPresentation(
+                title: "Live Board + Hand Read",
+                caption: nil,
+                read: boardRead(
+                    madeHand: "Two Pair",
+                    drawOutlook: "Turn complete: river still to come.",
+                    boardTexture: "Ace-high board with straight and backdoor flush pressure.",
+                    straightPressure: "Broadway and gutshot pressure still live.",
+                    blockerNote: "Top two blocks strong value continues."
+                )
+            ),
+            decisionTrail: [
+                HandDecisionLine(street: "flop", chosenAction: "call", bestAction: "call", regret: 0, equivalenceThreshold: 5)
+            ],
+            handSummary: nil,
+            nextActorName: "You",
+            userStack: 214,
+            isUsersTurn: true
+        )
+    }
+
+    private static func longNames() -> LayoutDebugModel {
+        let actions = [
+            sampleAction(action: "check/call", amount: 46, ev: 14.2, evGap: 9.8),
+            sampleAction(action: "raise_half_pot", amount: 139, ev: 24.0, evGap: 0.0),
+            sampleAction(action: "raise_pot", amount: 232, ev: 17.9, evGap: 6.1)
+        ]
+
+        let players = [
+            player(name: "Professor Value Extraction", stack: 1237, handDelta: -63, inHand: true, lastAction: "bet 46", archetype: "Exploit Scholar", committed: 46, contributed: 63),
+            player(name: "Grandmaster Fold Equity", stack: 884, handDelta: -40, inHand: false, lastAction: "fold flop", archetype: "Precision Probe", committed: 0, contributed: 40),
+            player(name: "Theoretical Sampler 9000", stack: 991, handDelta: -52, inHand: true, lastAction: "call 46", archetype: "Range Architect", committed: 46, contributed: 52),
+            player(name: "Counterfactual Value Engine", stack: 1084, handDelta: -18, inHand: true, lastAction: "in pot", archetype: "Balanced Analyst", committed: 0, contributed: 18),
+            player(name: "You", stack: 932, handDelta: -26, inHand: true, lastAction: "facing 46", isUser: true, archetype: "Hero", committed: 0, contributed: 26, hole: ["Kd", "Qs"]),
+            player(name: "Population Tendency Exploiter", stack: 765, handDelta: -30, inHand: false, lastAction: "fold pre", archetype: "Adaptive Overfolder", committed: 0, contributed: 30)
+        ]
+
+        return LayoutDebugModel(
+            subtitle: "Long-name truncation and badge packing",
+            sessionLabel: "Session +$74",
+            state: state(
+                pot: 278,
+                dealer: 3,
+                sbIdx: 0,
+                bbIdx: 4,
+                street: "turn",
+                board: ["Kh", "8s", "3c", "Qd"],
+                players: players,
+                toAct: 4,
+                toCall: 46,
+                userHole: ["Kd", "Qs"],
+                handOver: false,
+                actionLog: [
+                    "Turn: Qd",
+                    "Professor Value Extraction bets 46",
+                    "Theoretical Sampler 9000 calls 46",
+                    "Your decision: call 46 into pot 324"
+                ]
+            ),
+            actions: actions,
+            feedback: nil,
+            recentFeedback: nil,
+            coachNote: nil,
+            boardReadPresentation: BoardReadPresentation(
+                title: "Live Board + Hand Read",
+                caption: nil,
+                read: boardRead(
+                    madeHand: "Two Pair",
+                    drawOutlook: "Turn complete: river still to come.",
+                    boardTexture: "High-card board with moderate straight pressure.",
+                    straightPressure: "J-T and A-J continue strongly here.",
+                    blockerNote: "Top two blocks several value combos."
+                )
+            ),
+            decisionTrail: [
+                HandDecisionLine(street: "flop", chosenAction: "check/call", bestAction: "check/call", regret: 0, equivalenceThreshold: 5)
+            ],
+            handSummary: nil,
+            nextActorName: "You",
+            userStack: 932,
+            isUsersTurn: true
+        )
+    }
+
+    private static func longFooterPills() -> LayoutDebugModel {
+        let players = [
+            player(name: "NitLord Supreme", stack: 11042, handDelta: -10948, inHand: true, lastAction: "call 612", archetype: "Rock", committed: 0, contributed: 10948, hole: ["Ac", "Ad"], handRank: "Four of a Kind"),
+            player(name: "Straight Flush Stan", stack: 15584, handDelta: 12495, inHand: true, lastAction: "raise to 612", archetype: "LAG", committed: 0, contributed: 3089, hole: ["9s", "8s"], handRank: "Straight Flush"),
+            player(name: "Full House Fiona", stack: 844, handDelta: -3816, inHand: true, lastAction: "call 612", archetype: "Balanced", committed: 0, contributed: 3816, hole: ["Kh", "Kd"], handRank: "Full House"),
+            player(name: "ThreeBetTheo", stack: 992, handDelta: -2211, inHand: false, lastAction: "fold river", archetype: "Prober", committed: 0, contributed: 2211, hole: ["Qs", "Qc"], handRank: "Three of a Kind"),
+            player(name: "You", stack: 15384, handDelta: 11872, inHand: true, lastAction: "raise to 612", isUser: true, archetype: "Hero", committed: 0, contributed: 3512, hole: ["Js", "Ts"], handRank: "Straight Flush"),
+            player(name: "OnePairPete", stack: 126, handDelta: -1592, inHand: true, lastAction: "call 612", archetype: "Calling Station", committed: 0, contributed: 1592, hole: ["Ah", "Qh"], handRank: "One Pair")
+        ]
+
+        let handSummary = HandSummary(
+            decisions: 3,
+            chosenEVTotal: 422.4,
+            bestEVTotal: 488.7,
+            totalRegret: 66.3,
+            stackDelta: 11872,
+            biggestLeak: HandDecisionLine(
+                street: "turn",
+                chosenAction: "check/call",
+                bestAction: "raise_overbet_150_pot",
+                regret: 41.8,
+                equivalenceThreshold: 8.0
+            )
+        )
+
+        return LayoutDebugModel(
+            subtitle: "Longest footer pills and largest stack deltas",
+            sessionLabel: "Session +$11,872",
+            state: state(
+                pot: 18896,
+                dealer: 2,
+                sbIdx: 5,
+                bbIdx: 4,
+                street: "showdown",
+                board: ["7s", "6s", "5s", "Ac", "As"],
+                players: players,
+                toAct: 0,
+                toCall: 0,
+                userHole: ["Js", "Ts"],
+                handOver: true,
+                winnerNames: ["You", "Straight Flush Stan"],
+                actionLog: [
+                    "River: As",
+                    "Straight Flush Stan calls 612",
+                    "You raise to 612",
+                    "Showdown"
+                ]
+            ),
+            actions: [],
+            feedback: nil,
+            recentFeedback: nil,
+            coachNote: nil,
+            boardReadPresentation: BoardReadPresentation(
+                title: "Decision Node + Hand Read",
+                caption: "Decision node: TURN • Board 7s 6s 5s Ac • Pot $4,820 • To call $612",
+                read: boardRead(
+                    madeHand: "Straight Flush",
+                    drawOutlook: "River complete: no future cards to come.",
+                    boardTexture: "Monotone board with paired river.",
+                    straightPressure: "Nut-straight pressure resolved before showdown.",
+                    blockerNote: "You block the absolute top flush structure."
+                )
+            ),
+            decisionTrail: [
+                HandDecisionLine(street: "flop", chosenAction: "raise_half_pot", bestAction: "raise_half_pot", regret: 0, equivalenceThreshold: 5),
+                HandDecisionLine(street: "turn", chosenAction: "check/call", bestAction: "raise_overbet_150_pot", regret: 41.8, equivalenceThreshold: 8),
+                HandDecisionLine(street: "river", chosenAction: "raise_pot", bestAction: "raise_pot", regret: 0, equivalenceThreshold: 8)
+            ],
+            handSummary: handSummary,
+            nextActorName: "Showdown",
+            userStack: 15384,
+            isUsersTurn: false
+        )
+    }
+
+    private static func coachTurn() -> LayoutDebugModel {
+        let actions = [
+            sampleAction(action: "fold", amount: 0, ev: -1.4, evGap: 2.6),
+            sampleAction(action: "check/call", amount: 22, ev: 1.2, evGap: 0.0),
+            sampleAction(action: "raise_min", amount: 26, ev: -0.8, evGap: 2.0),
+            sampleAction(action: "raise_50_pot", amount: 77, ev: -6.5, evGap: 7.7)
+        ]
+        let feedback = DecisionFeedback(
+            chosen: actions[1],
+            best: actions[1],
+            regret: 0,
+            equivalenceThreshold: 5,
+            equivalenceSpanUsed: 7.7,
+            equivalencePct: 0.10,
+            equivalenceAbsFloor: 5,
+            equivalenceBestEVUsed: 1.2,
+            equivalenceWorstEVUsed: -6.5,
+            actions: actions,
+            decisionStack: 488,
+            nodeSignature: DecisionNodeSignature(street: "flop", board: ["Ah", "4s", "Td"], pot: 111, toCall: 22, userStack: 488)
+        )
+
+        let players = [
+            PublicPlayer(name: "Sticky Ricky", stack: 471, hand_delta: 0, in_hand: true, last_action: "bet 22", is_user: false, archetype: "Calling Station", tightness: 0.4, aggression: 0.4, calliness: 0.9, skill: 0.4, committed_street: 22, contributed_hand: 29, hole_cards: [], hand_rank: nil),
+            PublicPlayer(name: "PhoneHo", stack: 500, hand_delta: 0, in_hand: false, last_action: "fold pre", is_user: false, archetype: "Calling Station", tightness: 0.5, aggression: 0.3, calliness: 0.8, skill: 0.3, committed_street: 0, contributed_hand: 0, hole_cards: [], hand_rank: nil),
+            PublicPlayer(name: "NoFoldNora 2", stack: 472, hand_delta: 0, in_hand: true, last_action: "call 22", is_user: false, archetype: "Calling Station", tightness: 0.3, aggression: 0.4, calliness: 0.9, skill: 0.4, committed_street: 22, contributed_hand: 28, hole_cards: [], hand_rank: nil),
+            PublicPlayer(name: "NoFoldNora", stack: 484, hand_delta: 0, in_hand: true, last_action: "in pot", is_user: false, archetype: "Calling Station", tightness: 0.3, aggression: 0.4, calliness: 0.9, skill: 0.4, committed_street: 0, contributed_hand: 16, hole_cards: [], hand_rank: nil),
+            PublicPlayer(name: "You", stack: 488, hand_delta: 0, in_hand: true, last_action: "in pot", is_user: true, archetype: "Hero", tightness: 0, aggression: 0, calliness: 0, skill: 0, committed_street: 0, contributed_hand: 12, hole_cards: ["4d", "Js"], hand_rank: nil),
+            PublicPlayer(name: "Sticky Ricky 2", stack: 474, hand_delta: 0, in_hand: true, last_action: "call 22", is_user: false, archetype: "Calling Station", tightness: 0.4, aggression: 0.4, calliness: 0.9, skill: 0.4, committed_street: 22, contributed_hand: 26, hole_cards: [], hand_rank: nil)
+        ]
+
+        let state = PublicState(
+            pot: 111,
+            sb: 1,
+            bb: 2,
+            dealer_idx: 3,
+            sb_idx: 0,
+            bb_idx: 4,
+            street: "flop",
+            board: ["Ah", "4s", "Td"],
+            players: players,
+            to_act: 4,
+            to_call: 22,
+            user_hole: ["4d", "Js"],
+            hand_over: false,
+            winner_name: nil,
+            winner_names: [],
+            action_log: [
+                "Flop: Ah 4s Td",
+                "Sticky Ricky bets 22",
+                "NoFoldNora 2 calls 22",
+                "Your decision: call 22 into pot 133"
+            ]
+        )
+
+        return LayoutDebugModel(
+            subtitle: "Persistent coach-note harness",
+            sessionLabel: "Session -$98",
+            state: state,
+            actions: actions,
+            feedback: nil,
+            recentFeedback: feedback,
+            coachNote: CoachNoteSnapshot(feedback: feedback),
+            boardReadPresentation: BoardReadPresentation(
+                title: "Decision Node + Hand Read",
+                caption: "Decision node: FLOP • Board Ah 4s Td • Pot $111 • To call $22",
+                read: LiveBoardRead(
+                    madeHand: "One Pair",
+                    drawOutlook: "No major draw pressure right now.",
+                    boardTexture: "Dry board texture.",
+                    straightPressure: "Straight highly unlikely available: one card can complete your straight.",
+                    blockerNote: "No major blocker edge in this node."
+                )
+            ),
+            decisionTrail: [
+                HandDecisionLine(street: "preflop", chosenAction: "check/call", bestAction: "check/call", regret: 0, equivalenceThreshold: 5),
+                HandDecisionLine(street: "flop", chosenAction: "check/call", bestAction: "check/call", regret: 0, equivalenceThreshold: 5)
+            ],
+            handSummary: nil,
+            nextActorName: "You",
+            userStack: 488,
+            isUsersTurn: true
+        )
+    }
+
+    private static func sampleAction(action: String, amount: Int, ev: Double, evGap: Double) -> ActionEV {
+        ActionEV(
+            action: action,
+            amount: amount,
+            ev: ev,
+            is_best: evGap == 0,
+            reason: "",
+            why: WhyMetrics(
+                hand_class: "medium pair",
+                board_texture: "dry",
+                made_hand_now: "One Pair",
+                draw_outlook: "No major draw pressure right now.",
+                blocker_note: "No major blocker edge in this node.",
+                to_call: amount,
+                pot_after_call: 133 + amount,
+                pot_odds_pct: 0,
+                required_equity_pct: 0,
+                estimated_equity_pct: 0,
+                equity_gap_pct: 0,
+                ev_gap: evGap,
+                chips_at_risk: amount,
+                pot_after_commit: 133 + amount,
+                net_if_win: 133,
+                breakeven_win_rate_pct: 0
+            )
+        )
+    }
+
+    private static func player(
+        name: String,
+        stack: Int,
+        handDelta: Int,
+        inHand: Bool,
+        lastAction: String,
+        isUser: Bool = false,
+        archetype: String,
+        committed: Int,
+        contributed: Int,
+        hole: [String] = [],
+        handRank: String? = nil,
+        tightness: Double = 0.4,
+        aggression: Double = 0.5,
+        calliness: Double = 0.5,
+        skill: Double = 0.5
+    ) -> PublicPlayer {
+        PublicPlayer(
+            name: name,
+            stack: stack,
+            hand_delta: handDelta,
+            in_hand: inHand,
+            last_action: lastAction,
+            is_user: isUser,
+            archetype: archetype,
+            tightness: tightness,
+            aggression: aggression,
+            calliness: calliness,
+            skill: skill,
+            committed_street: committed,
+            contributed_hand: contributed,
+            hole_cards: hole,
+            hand_rank: handRank
+        )
+    }
+
+    private static func state(
+        pot: Int,
+        dealer: Int,
+        sbIdx: Int,
+        bbIdx: Int,
+        street: String,
+        board: [String],
+        players: [PublicPlayer],
+        toAct: Int,
+        toCall: Int,
+        userHole: [String],
+        handOver: Bool,
+        winnerName: String? = nil,
+        winnerNames: [String] = [],
+        actionLog: [String]
+    ) -> PublicState {
+        PublicState(
+            pot: pot,
+            sb: 1,
+            bb: 2,
+            dealer_idx: dealer,
+            sb_idx: sbIdx,
+            bb_idx: bbIdx,
+            street: street,
+            board: board,
+            players: players,
+            to_act: toAct,
+            to_call: toCall,
+            user_hole: userHole,
+            hand_over: handOver,
+            winner_name: winnerName ?? winnerNames.first,
+            winner_names: winnerNames,
+            action_log: actionLog
+        )
+    }
+
+    private static func boardRead(
+        madeHand: String,
+        drawOutlook: String,
+        boardTexture: String,
+        straightPressure: String,
+        blockerNote: String
+    ) -> LiveBoardRead {
+        LiveBoardRead(
+            madeHand: madeHand,
+            drawOutlook: drawOutlook,
+            boardTexture: boardTexture,
+            straightPressure: straightPressure,
+            blockerNote: blockerNote
+        )
     }
 }
 
@@ -1351,12 +2337,48 @@ struct DecisionNodeSignature: Equatable {
     let userStack: Int
 }
 
+private func cleanCoachClause(_ value: String) -> String {
+    var text = value.replacingOccurrences(of: "..", with: ".")
+    text = text.replacingOccurrences(of: "  ", with: " ")
+    text = text.trimmingCharacters(in: .whitespacesAndNewlines)
+    while text.hasSuffix(".") {
+        text.removeLast()
+    }
+    return text
+}
+
+struct CoachNoteSnapshot: Equatable {
+    let takeaway: String
+    let missedEV: String
+
+    init(feedback: DecisionFeedback) {
+        let sourceReason =
+            feedback.regret <= feedback.equivalenceThreshold
+            ? feedback.best.reason
+            : feedback.chosen.reason
+        let cleaned = cleanCoachClause(sourceReason)
+        if !cleaned.isEmpty {
+            takeaway = cleaned
+        } else {
+            let chosenLabel = actionDisplayLabel(feedback.chosen, userStack: feedback.decisionStack, includeAmount: false)
+            let bestLabel = actionDisplayLabel(feedback.best, userStack: feedback.decisionStack, includeAmount: false)
+            if feedback.regret <= feedback.equivalenceThreshold {
+                takeaway = "Your line was within the near-opt threshold. Keep comparing it against \(bestLabel) before locking in the action."
+            } else {
+                takeaway = "\(chosenLabel) trailed \(bestLabel) by \(usd(feedback.regret)) here. Re-check price, board texture, and what your sizing is trying to accomplish."
+            }
+        }
+        missedEV = usd(feedback.chosen.why.ev_gap)
+    }
+}
+
 struct HandDecisionLine: Identifiable {
     let id = UUID()
     let street: String
     let chosenAction: String
     let bestAction: String
     let regret: Double
+    let equivalenceThreshold: Double
 }
 
 struct HandSummary {
@@ -1374,6 +2396,12 @@ struct LiveBoardRead {
     let boardTexture: String
     let straightPressure: String
     let blockerNote: String
+}
+
+struct BoardReadPresentation {
+    let title: String
+    let caption: String?
+    let read: LiveBoardRead
 }
 
 struct NoticeItem: Identifiable, Equatable {
@@ -1575,13 +2603,48 @@ private struct PlayerSeatView: View {
     private var contributionLine: String {
         "Street \(usd(player.committed_street)) · Hand \(usd(player.contributed_hand))"
     }
+    private var stackLine: String {
+        "Stack \(usd(player.stack))"
+    }
 
-    private var seatWidth: CGFloat { player.is_user ? 212 : 164 }
-    private var seatHeight: CGFloat { player.is_user ? 223 : 212 }
-    private var cardWidth: CGFloat { player.is_user ? 70 : 40 }
-    private var cardHeight: CGFloat { player.is_user ? 80 : 56 }
-    private var footerHeight: CGFloat { player.is_user ? 32 : 34 }
+    private var metrics: SeatLayoutMetrics { seatLayoutMetrics(isUser: player.is_user) }
+    private var seatWidth: CGFloat { metrics.width }
+    private var seatHeight: CGFloat { metrics.height }
+    private var cardWidth: CGFloat { metrics.cardWidth }
+    private var cardHeight: CGFloat { metrics.cardHeight }
+    private var footerHeight: CGFloat { metrics.footerHeight }
     private var isDimmed: Bool { !handOver && !player.in_hand && !isWinner }
+    private var seatCornerRadius: CGFloat { 12 }
+    private var seatBackgroundGradient: LinearGradient {
+        let topOpacity = player.is_user ? 0.96 : 0.92
+        let bottomOpacity = player.is_user ? 0.94 : 0.90
+        return LinearGradient(
+            colors: [
+                Color(red: 0.46, green: 0.69, blue: 0.58).opacity(topOpacity),
+                Color(red: 0.37, green: 0.62, blue: 0.51).opacity(bottomOpacity)
+            ],
+            startPoint: .topLeading,
+            endPoint: .bottomTrailing
+        )
+    }
+    private var seatBorderColor: Color {
+        if isWinner {
+            return .yellow
+        }
+        if isToAct {
+            return .yellow
+        }
+        if player.in_hand {
+            return Color.white.opacity(0.25)
+        }
+        return Color.red.opacity(0.70)
+    }
+    private var seatBorderWidth: CGFloat {
+        (isWinner || isToAct) ? 2.2 : 1
+    }
+    private var seatHighlightOpacity: Double {
+        isWinner ? 0.10 : 0.04
+    }
     private var displayedHandDelta: Int {
         let raw = player.hand_delta
         if handOver, !player.in_hand, player.contributed_hand > 0 {
@@ -1608,9 +2671,9 @@ private struct PlayerSeatView: View {
     private var secondarySeatTextColor: Color {
         isWinner ? .primary : .secondary
     }
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 2) {
+    @ViewBuilder
+    private var topContent: some View {
+        VStack(alignment: .leading, spacing: 3) {
             HStack(spacing: 6) {
                 PersonaBadgeView(player: player)
 
@@ -1669,7 +2732,7 @@ private struct PlayerSeatView: View {
                 }
             }
 
-            HStack(spacing: 4) {
+            HStack(spacing: 3) {
                 if let knownCards, knownCards.count == 2 {
                     ForEach(knownCards, id: \.self) { code in
                         PlayingCardView(
@@ -1695,102 +2758,105 @@ private struct PlayerSeatView: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
 
-            HStack(alignment: .center, spacing: 8) {
-                CasinoChipRackView(
-                    amount: player.stack,
-                    label: "Stack",
-                    compact: true,
-                    centered: false,
-                    maxTiersOverride: casinoChipSpecs.count,
-                    showOverflowIndicator: false,
-                    showCountBadge: false
-                )
-                    .layoutPriority(1)
-                Spacer(minLength: 2)
-                Text(player.in_hand ? "IN" : "FOLD")
+            VStack(alignment: .leading, spacing: 2) {
+                Text(stackLine)
+                    .font(.callout.weight(.bold).monospacedDigit())
+                    .foregroundStyle(Color.primary.opacity(0.92))
+                    .lineLimit(1)
+
+                Text(contributionLine)
+                    .font(.caption2.monospacedDigit())
+                    .foregroundStyle(secondarySeatTextColor)
+                    .lineLimit(1)
+
+                Text(cleanAction)
+                    .font(.caption2.weight(.medium))
+                    .foregroundStyle(secondarySeatTextColor)
+                    .lineLimit(1)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+
+    @ViewBuilder
+    private var footerContent: some View {
+        HStack(spacing: 3) {
+            if let showdownRank {
+                let handStyle = handResultStyle(for: showdownRank)
+                Text(showdownRank)
                     .font(.caption.weight(.semibold))
-                    .foregroundStyle(player.in_hand ? Color.green : Color.red)
+                    .foregroundStyle(handStyle.foreground)
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 3)
+                    .background(handStyle.fill, in: Capsule())
+                    .overlay(
+                        Capsule(style: .continuous)
+                            .stroke(handStyle.border.opacity(0.90), lineWidth: 0.9)
+                    )
+                    .shadow(color: handStyle.border.opacity(0.18), radius: 1.6, y: 0.8)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.70)
+                    .layoutPriority(2)
+                    .frame(maxWidth: player.is_user ? 106 : 84, alignment: .leading)
+                    .truncationMode(.tail)
+            }
+
+            Spacer(minLength: 2)
+
+            if let handDeltaLabel, handOver {
+                Text(handDeltaLabel)
+                    .font(.caption2.weight(.bold))
+                    .foregroundStyle(handDeltaColor)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.70)
                     .padding(.horizontal, 6)
                     .padding(.vertical, 2)
-                    .background(Color.black.opacity(0.20), in: Capsule(style: .continuous))
+                    .background(
+                        Capsule(style: .continuous)
+                            .fill(Color.black.opacity(0.28))
+                    )
+                    .layoutPriority(1)
+                    .frame(maxWidth: player.is_user ? 90 : 72, alignment: .trailing)
+                    .truncationMode(.head)
             }
-
-            Text(contributionLine)
-                .font(.caption2.monospacedDigit())
-                .foregroundStyle(secondarySeatTextColor)
-                .lineLimit(1)
-
-            Text(cleanAction)
-                .font(.caption2.weight(.medium))
-                .foregroundStyle(secondarySeatTextColor)
-                .lineLimit(1)
-
-            Spacer(minLength: 0)
-
-            HStack(spacing: 3) {
-                if let showdownRank {
-                    let handStyle = handResultStyle(for: showdownRank)
-                    Text(showdownRank)
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(handStyle.foreground)
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 3)
-                        .background(handStyle.fill, in: Capsule())
-                        .overlay(
-                            Capsule(style: .continuous)
-                                .stroke(handStyle.border.opacity(0.90), lineWidth: 0.9)
-                        )
-                        .shadow(color: handStyle.border.opacity(0.18), radius: 1.6, y: 0.8)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.70)
-                        .layoutPriority(2)
-                        .frame(maxWidth: player.is_user ? 106 : 84, alignment: .leading)
-                        .truncationMode(.tail)
-                }
-
-                Spacer(minLength: 2)
-
-                if let handDeltaLabel, handOver {
-                    Text(handDeltaLabel)
-                        .font(.caption2.weight(.bold))
-                        .foregroundStyle(handDeltaColor)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.70)
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 2)
-                        .background(
-                            Capsule(style: .continuous)
-                                .fill(Color.black.opacity(0.28))
-                        )
-                        .layoutPriority(1)
-                        .frame(maxWidth: player.is_user ? 90 : 72, alignment: .trailing)
-                        .truncationMode(.head)
-                }
-            }
-            .frame(maxWidth: .infinity, minHeight: footerHeight, maxHeight: footerHeight, alignment: .bottomLeading)
         }
-        .padding(.top, 6)
+        .frame(maxWidth: .infinity, minHeight: footerHeight, maxHeight: footerHeight, alignment: .bottomLeading)
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            topContent
+
+            Spacer(minLength: metrics.footerLift)
+
+            footerContent
+        }
+        .padding(.top, 5)
         .padding(.horizontal, 6)
-        .padding(.bottom, player.is_user ? 8 : 7)
+        .padding(.bottom, metrics.bottomPadding)
         .frame(width: seatWidth, height: seatHeight, alignment: .topLeading)
-        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .background(
+            RoundedRectangle(cornerRadius: seatCornerRadius, style: .continuous)
+                .fill(seatBackgroundGradient)
+        )
         .overlay(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .stroke(
-                    isWinner ? Color.yellow : (isToAct ? Color.yellow : (player.in_hand ? Color.white.opacity(0.25) : Color.red.opacity(0.70))),
-                    lineWidth: (isWinner || isToAct) ? 2.2 : 1
-                )
+            RoundedRectangle(cornerRadius: seatCornerRadius, style: .continuous)
+                .fill(Color.white.opacity(seatHighlightOpacity))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: seatCornerRadius, style: .continuous)
+                .stroke(seatBorderColor, lineWidth: seatBorderWidth)
         )
         .shadow(color: isWinner ? Color.yellow.opacity(0.35) : .clear, radius: isWinner ? 8 : 0, y: 0)
         .saturation(isDimmed ? 0.15 : 1)
         .opacity(isDimmed ? 0.82 : 1)
         .overlay {
             if isDimmed {
-                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                RoundedRectangle(cornerRadius: seatCornerRadius, style: .continuous)
                     .fill(Color.black.opacity(0.16))
             }
         }
-        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .clipShape(RoundedRectangle(cornerRadius: seatCornerRadius, style: .continuous))
     }
 }
 
@@ -1847,7 +2913,9 @@ private struct PersonaBadgeView: View {
 private struct ActionPanel: View {
     let actions: [ActionEV]
     let feedback: DecisionFeedback?
-    let boardRead: LiveBoardRead
+    let recentFeedback: DecisionFeedback?
+    let coachNote: CoachNoteSnapshot?
+    let boardReadPresentation: BoardReadPresentation
     let decisionTrail: [HandDecisionLine]
     let handSummary: HandSummary?
     let handOver: Bool
@@ -1945,12 +3013,28 @@ private struct ActionPanel: View {
                     DecisionTrailView(lines: decisionTrail, compact: compact)
                 }
 
-                LiveBoardReadView(read: boardRead, compact: compact)
+                LiveBoardReadView(
+                    title: boardReadPresentation.title,
+                    caption: boardReadPresentation.caption,
+                    read: boardReadPresentation.read,
+                    compact: compact
+                )
                     .frame(minHeight: compact ? 96 : 120, alignment: .topLeading)
                     .layoutPriority(1)
 
                 if let feedback {
                     DecisionFeedbackView(feedback: feedback, compact: compact)
+                        .padding(.top, compact ? 1 : 2)
+                } else if let recentFeedback {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Previous decision result")
+                            .font(.caption2.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                        DecisionFeedbackView(feedback: recentFeedback, compact: compact)
+                    }
+                    .padding(.top, compact ? 1 : 2)
+                } else if let coachNote {
+                    CoachNoteCard(note: coachNote, compact: compact)
                         .padding(.top, compact ? 1 : 2)
                 }
 
@@ -2023,36 +3107,9 @@ private struct DecisionFeedbackView: View {
         return "MID"
     }
 
-    private func chips(_ value: Double) -> String {
-        usd(value)
-    }
-
-    private func cleanClause(_ value: String) -> String {
-        var text = value.replacingOccurrences(of: "..", with: ".")
-        text = text.replacingOccurrences(of: "  ", with: " ")
-        text = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        while text.hasSuffix(".") {
-            text.removeLast()
-        }
-        return text
-    }
-
-    private var coachTakeaway: String {
-        let cleaned = cleanClause(feedback.best.reason)
-        if !cleaned.isEmpty {
-            return cleaned
-        }
-
-        let chosenLabel = actionDisplayLabel(feedback.chosen, userStack: feedback.decisionStack, includeAmount: false)
-        let bestLabel = actionDisplayLabel(feedback.best, userStack: feedback.decisionStack, includeAmount: false)
-        if feedback.regret <= feedback.equivalenceThreshold {
-            return "Your line was within the near-opt threshold. Keep comparing it against \(bestLabel) before locking in the action."
-        }
-        return "\(chosenLabel) trailed \(bestLabel) by \(usd(feedback.regret)) here. Re-check price, board texture, and what your sizing is trying to accomplish."
-    }
+    private var coachNote: CoachNoteSnapshot { CoachNoteSnapshot(feedback: feedback) }
 
     var body: some View {
-        let chosen = feedback.chosen.why
         VStack(alignment: .leading, spacing: compact ? 5 : 7) {
             HStack(spacing: 8) {
                 Text(feedback.grade)
@@ -2111,8 +3168,8 @@ private struct DecisionFeedbackView: View {
                 icon: "text.bubble",
                 tint: .green,
                 rows: [
-                    InsightRow(label: "Takeaway", value: coachTakeaway),
-                    InsightRow(label: "Missed EV", value: chips(chosen.ev_gap))
+                    InsightRow(label: "Takeaway", value: coachNote.takeaway),
+                    InsightRow(label: "Missed EV", value: coachNote.missedEV)
                 ],
                 compact: compact
             )
@@ -2129,22 +3186,51 @@ private struct DecisionFeedbackView: View {
     }
 }
 
-private struct LiveBoardReadView: View {
-    let read: LiveBoardRead
+private struct CoachNoteCard: View {
+    let note: CoachNoteSnapshot
     let compact: Bool
 
     var body: some View {
         InsightBulletCard(
-            title: "Live Board + Hand Read",
+            title: "Coach note",
+            icon: "text.bubble",
+            tint: .green,
+            rows: [
+                InsightRow(label: "Takeaway", value: note.takeaway),
+                InsightRow(label: "Missed EV", value: note.missedEV)
+            ],
+            compact: compact
+        )
+    }
+}
+
+private struct LiveBoardReadView: View {
+    let title: String
+    let caption: String?
+    let read: LiveBoardRead
+    let compact: Bool
+
+    private var rows: [InsightRow] {
+        var rows: [InsightRow] = []
+        if let caption, !caption.isEmpty {
+            rows.append(InsightRow(label: "Context", value: caption))
+        }
+        rows.append(contentsOf: [
+            InsightRow(label: "Made hand now", value: read.madeHand),
+            InsightRow(label: "Draw outlook", value: read.drawOutlook),
+            InsightRow(label: "Board texture", value: read.boardTexture),
+            InsightRow(label: "Straight pressure", value: read.straightPressure),
+            InsightRow(label: "Blockers", value: read.blockerNote)
+        ])
+        return rows
+    }
+
+    var body: some View {
+        InsightBulletCard(
+            title: title,
             icon: "square.stack.3d.up.fill",
             tint: .blue,
-            rows: [
-                InsightRow(label: "Made hand now", value: read.madeHand),
-                InsightRow(label: "Draw outlook", value: read.drawOutlook),
-                InsightRow(label: "Board texture", value: read.boardTexture),
-                InsightRow(label: "Straight pressure", value: read.straightPressure),
-                InsightRow(label: "Blockers", value: read.blockerNote)
-            ],
+            rows: rows,
             compact: compact
         )
     }
@@ -3171,6 +4257,8 @@ final class VM: ObservableObject {
     @Published var sessionAnalysisStatus: SessionAnalysisStatus = .idle
     @Published var sessionAnalysisModel: String?
     @Published var currentSessionReportPath: String?
+    @Published var stickyFeedback: DecisionFeedback?
+    @Published var stickyCoachNote: CoachNoteSnapshot?
 
     private let core = PokerCore()
     private var undoStack: [UndoSnapshot] = []
@@ -3199,6 +4287,7 @@ final class VM: ObservableObject {
     private struct UndoSnapshot {
         let game: UnsafeMutableRawPointer
         let lastFeedback: DecisionFeedback?
+        let stickyFeedback: DecisionFeedback?
         let decisionCount: Int
         let cumulativeChosenEV: Double
         let cumulativeBestEV: Double
@@ -3212,6 +4301,7 @@ final class VM: ObservableObject {
         let sessionRealizedPnl: Int
         let didSettleCurrentHand: Bool
         let nearOptimalDecisions: Int
+        let stickyCoachNote: CoachNoteSnapshot?
         let completedHandsCount: Int
         let benchmarkCleanHands: Int
         let currentHandIsCleanForBenchmark: Bool
@@ -3332,8 +4422,28 @@ final class VM: ObservableObject {
         "regret≤max(10% EV span,$5)"
     }
 
-    var liveBoardRead: LiveBoardRead {
-        buildLiveBoardRead()
+    var boardReadPresentation: BoardReadPresentation {
+        if let feedback = lastFeedback {
+            let isReviewingPastNode = state.hand_over || feedback.nodeSignature != currentDecisionNodeSignature()
+            if isReviewingPastNode {
+                return BoardReadPresentation(
+                    title: "Decision Node + Hand Read",
+                    caption: decisionNodeCaption(feedback.nodeSignature),
+                    read: buildBoardRead(
+                        board: feedback.nodeSignature.board,
+                        hole: state.user_hole,
+                        knownRank: nil,
+                        userStack: feedback.nodeSignature.userStack,
+                        why: feedback.chosen.why
+                    )
+                )
+            }
+        }
+        return BoardReadPresentation(
+            title: "Live Board + Hand Read",
+            caption: nil,
+            read: buildLiveBoardRead()
+        )
     }
 
     var isUsersTurn: Bool {
@@ -3404,6 +4514,7 @@ final class VM: ObservableObject {
         sessionAnalysisModel = nil
         currentSessionReportPath = nil
         sessionAnalysisNote = nil
+        stickyCoachNote = nil
         didAutoTriggerSessionAnalysis = false
         currentHandID = 1
         installEventLogger()
@@ -3579,6 +4690,7 @@ final class VM: ObservableObject {
                 UndoSnapshot(
                     game: snapshotPtr,
                     lastFeedback: lastFeedback,
+                    stickyFeedback: stickyFeedback,
                     decisionCount: decisionCount,
                     cumulativeChosenEV: cumulativeChosenEV,
                     cumulativeBestEV: cumulativeBestEV,
@@ -3592,6 +4704,7 @@ final class VM: ObservableObject {
                     sessionRealizedPnl: sessionRealizedPnl,
                     didSettleCurrentHand: didSettleCurrentHand,
                     nearOptimalDecisions: nearOptimalDecisions,
+                    stickyCoachNote: stickyCoachNote,
                     completedHandsCount: completedHandsCount,
                     benchmarkCleanHands: benchmarkCleanHands,
                     currentHandIsCleanForBenchmark: currentHandIsCleanForBenchmark,
@@ -3602,6 +4715,7 @@ final class VM: ObservableObject {
         }
 
         let snapshot = actions
+        let decisionState = state
         let decisionStack = userStack()
         let preActionUserStack = decisionStack
         let preSessionRealizedPnl = sessionRealizedPnl
@@ -3627,6 +4741,10 @@ final class VM: ObservableObject {
                 decisionStack: decisionStack,
                 nodeSignature: currentDecisionNodeSignature()
             )
+            if let lastFeedback {
+                stickyFeedback = lastFeedback
+                stickyCoachNote = CoachNoteSnapshot(feedback: lastFeedback)
+            }
             cumulativeChosenEV += chosen.ev
             cumulativeBestEV += best.ev
             cumulativeRegret += regret
@@ -3644,7 +4762,8 @@ final class VM: ObservableObject {
                     street: state.street,
                     chosenAction: chosen.action,
                     bestAction: best.action,
-                    regret: regret
+                    regret: regret,
+                    equivalenceThreshold: tolerance
                 )
             )
 
@@ -3742,10 +4861,15 @@ final class VM: ObservableObject {
             }
             extra["session_realized_pnl"] = postSessionRealizedPnl
             extra["session_realized_pnl_delta"] = postSessionRealizedPnl - preSessionRealizedPnl
+            extra["decision_ended_hand"] = state.hand_over
+            extra["post_action_street"] = state.street
+            extra["post_action_pot"] = state.pot
+            extra["post_action_to_call"] = state.to_call
+            extra["post_action_hand_over"] = state.hand_over
             eventLogger?.append(
                 event: "decision_lock",
                 handID: currentHandID,
-                state: state,
+                state: decisionState,
                 extra: extra
             )
         }
@@ -3788,6 +4912,8 @@ final class VM: ObservableObject {
         disableBoardAnimation = true
         core.startNewTrainingHand()
         lastFeedback = nil
+        stickyFeedback = nil
+        stickyCoachNote = nil
         handSummary = nil
         handDecisionLines.removeAll(keepingCapacity: true)
         handChosenEVTotal = 0
@@ -3826,6 +4952,8 @@ final class VM: ObservableObject {
         core.restoreGame(from: snapshot.game)
         core.freeSnapshot(snapshot.game)
         lastFeedback = snapshot.lastFeedback
+        stickyFeedback = snapshot.stickyFeedback
+        stickyCoachNote = snapshot.stickyCoachNote
         decisionCount = snapshot.decisionCount
         cumulativeChosenEV = snapshot.cumulativeChosenEV
         cumulativeBestEV = snapshot.cumulativeBestEV
@@ -3936,7 +5064,9 @@ final class VM: ObservableObject {
             bestEVTotal: handBestEVTotal,
             totalRegret: handRegretTotal,
             stackDelta: delta,
-            biggestLeak: handDecisionLines.max(by: { $0.regret < $1.regret })
+            biggestLeak: handDecisionLines
+                .filter { $0.regret > max(0.01, $0.equivalenceThreshold) }
+                .max(by: { $0.regret < $1.regret })
         )
     }
 
@@ -4242,10 +5372,29 @@ final class VM: ObservableObject {
         return "High Card"
     }
 
+    private func decisionNodeCaption(_ node: DecisionNodeSignature) -> String {
+        let boardLabel = node.board.isEmpty ? "(no board)" : node.board.joined(separator: " ")
+        return "Decision node: \(node.street.uppercased()) • Board \(boardLabel) • Pot \(usd(node.pot)) • To call \(usd(node.toCall))"
+    }
+
     private func buildLiveBoardRead() -> LiveBoardRead {
-        let board = state.board
-        let hole = state.user_hole
         let user = state.players.first(where: { $0.is_user })
+        return buildBoardRead(
+            board: state.board,
+            hole: state.user_hole,
+            knownRank: user?.hand_rank,
+            userStack: user?.stack ?? 0,
+            why: nil
+        )
+    }
+
+    private func buildBoardRead(
+        board: [String],
+        hole: [String],
+        knownRank: String?,
+        userStack: Int,
+        why: WhyMetrics?
+    ) -> LiveBoardRead {
         let stage = board.count
 
         var boardSuitCounts: [Character: Int] = [:]
@@ -4332,7 +5481,6 @@ final class VM: ObservableObject {
         }()
 
         let blockerNote: String = {
-            guard let user else { return "No strong blocker effect." }
             let holeRanks = hole.compactMap(parseRank)
             if holeRanks.contains(14) && boardRanks.contains(14) {
                 return "You block some top-pair A-x value lines."
@@ -4340,18 +5488,18 @@ final class VM: ObservableObject {
             if holeRanks.contains(13) && boardRanks.contains(13) {
                 return "You block some top-pair K-x value lines."
             }
-            if user.stack <= 0 {
+            if userStack <= 0 {
                 return "Bankroll bust spot: next hand resets to $500."
             }
             return "No major blocker edge in this node."
         }()
 
         return LiveBoardRead(
-            madeHand: combinedMadeHand(board: board, hole: hole, knownRank: user?.hand_rank),
-            drawOutlook: drawOutlook,
-            boardTexture: texture,
+            madeHand: why?.made_hand_now ?? combinedMadeHand(board: board, hole: hole, knownRank: knownRank),
+            drawOutlook: why?.draw_outlook ?? drawOutlook,
+            boardTexture: why?.board_texture ?? texture,
             straightPressure: combinedStraightPressure(hasStraight: hasStraight, bestHit: straightHits, stage: stage),
-            blockerNote: blockerNote
+            blockerNote: why?.blocker_note ?? blockerNote
         )
     }
 

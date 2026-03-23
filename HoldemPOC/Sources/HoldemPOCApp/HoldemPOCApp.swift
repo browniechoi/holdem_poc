@@ -1,4 +1,5 @@
 import AppKit
+import ScreenCaptureKit
 import SwiftUI
 
 @MainActor
@@ -11,19 +12,35 @@ final class PokerAppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        let content = ContentView()
+        let env = ProcessInfo.processInfo.environment
+        let debugScene = env["HOLDEM_LAYOUT_DEBUG_SCENE"].flatMap(LayoutDebugScene.init(rawValue:))
+        let snapshotPath = env["HOLDEM_UI_SNAPSHOT_PATH"]
+        let isDeterministicWindow = debugScene != nil || (snapshotPath?.isEmpty == false)
+        let configuredWidth = CGFloat(Double(env["HOLDEM_UI_WINDOW_WIDTH"] ?? "") ?? 0)
+        let configuredHeight = CGFloat(Double(env["HOLDEM_UI_WINDOW_HEIGHT"] ?? "") ?? 0)
+        let windowWidth = configuredWidth > 0 ? configuredWidth : (isDeterministicWindow ? 1440 : 0)
+        let windowHeight = configuredHeight > 0 ? configuredHeight : (isDeterministicWindow ? 900 : 0)
+        let content: AnyView
+        if let debugScene {
+            content = AnyView(LayoutDebugHarnessView(scene: debugScene))
+        } else {
+            content = AnyView(ContentView())
+        }
         NSApp.applicationIconImage = makePokerIcon(size: 512)
 
         let window = NSWindow(
-            contentRect: NSRect(x: 160, y: 120, width: 940, height: 640),
+            contentRect: NSRect(x: 160, y: 120, width: max(940, windowWidth), height: max(640, windowHeight)),
             styleMask: [.titled, .closable, .miniaturizable, .resizable],
             backing: .buffered,
             defer: false
         )
-        window.title = "HoldemPOC"
+        window.title = debugScene == nil ? "HoldemPOC" : "HoldemPOC Debug"
         window.contentView = NSHostingView(rootView: content)
         window.minSize = NSSize(width: 760, height: 560)
-        if let screen = NSScreen.main {
+        if windowWidth > 0, windowHeight > 0 {
+            window.setContentSize(NSSize(width: windowWidth, height: windowHeight))
+            window.center()
+        } else if let screen = NSScreen.main {
             let frame = screen.visibleFrame
             window.setFrame(frame, display: true)
         } else {
@@ -36,6 +53,123 @@ final class PokerAppDelegate: NSObject, NSApplicationDelegate {
 
         NSRunningApplication.current.activate(options: [.activateAllWindows])
         NSApp.activate(ignoringOtherApps: true)
+
+        maybeCaptureSnapshot(of: window)
+    }
+
+    private func maybeCaptureSnapshot(of window: NSWindow) {
+        let env = ProcessInfo.processInfo.environment
+        guard let snapshotPath = env["HOLDEM_UI_SNAPSHOT_PATH"], !snapshotPath.isEmpty else {
+            return
+        }
+        let delay = Double(env["HOLDEM_UI_SNAPSHOT_DELAY"] ?? "0.8") ?? 0.8
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
+            Task { @MainActor in
+                await self?.writeSnapshotAndTerminate(of: window, to: snapshotPath)
+            }
+        }
+    }
+
+    private func writeSnapshotAndTerminate(of window: NSWindow, to path: String) async {
+        guard await writeSnapshot(of: window, to: path) else {
+            reportSnapshotFailure(path: path)
+            exit(EXIT_FAILURE)
+        }
+        NSApp.terminate(nil)
+    }
+
+    private func writeSnapshot(of window: NSWindow, to path: String) async -> Bool {
+        guard let contentView = window.contentView else { return false }
+        window.displayIfNeeded()
+        contentView.layoutSubtreeIfNeeded()
+
+        let url = URL(fileURLWithPath: path)
+        try? FileManager.default.createDirectory(
+            at: url.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+
+        if let cgImage = await captureWindowImageWithScreenCaptureKit(window) {
+            let rep = NSBitmapImageRep(cgImage: cgImage)
+            if let data = rep.representation(using: .png, properties: [:]) {
+                do {
+                    try data.write(to: url)
+                    return true
+                } catch {
+                    return false
+                }
+            }
+        }
+        return false
+    }
+
+    private func captureWindowImageWithScreenCaptureKit(_ window: NSWindow) async -> CGImage? {
+        let targetWindowID = CGWindowID(window.windowNumber)
+        do {
+            for attempt in 0..<6 {
+                let shareableContent = try await currentProcessShareableContent().value
+                if let scWindow = shareableContent.windows.first(where: { $0.windowID == targetWindowID }) {
+                    let filter = SCContentFilter(desktopIndependentWindow: scWindow)
+                    let config = SCStreamConfiguration()
+                    let scale = max(1.0, CGFloat(filter.pointPixelScale))
+                    let contentRect = filter.contentRect
+                    config.width = max(1, Int(round(contentRect.width * scale)))
+                    config.height = max(1, Int(round(contentRect.height * scale)))
+                    config.showsCursor = false
+                    config.scalesToFit = false
+                    config.ignoreShadowsSingleWindow = true
+                    config.shouldBeOpaque = false
+                    return try await captureImage(contentFilter: filter, configuration: config)
+                }
+
+                if attempt < 5 {
+                    try await Task.sleep(nanoseconds: 100_000_000)
+                }
+            }
+        } catch {
+            return nil
+        }
+        return nil
+    }
+
+    private func currentProcessShareableContent() async throws -> SendableBox<SCShareableContent> {
+        try await withCheckedThrowingContinuation { continuation in
+            let finish: @Sendable (SCShareableContent?, Error?) -> Void = { content, error in
+                if let content {
+                    continuation.resume(returning: SendableBox(value: content))
+                } else {
+                    continuation.resume(throwing: error ?? SnapshotCaptureError.shareableContentUnavailable)
+                }
+            }
+
+            if #available(macOS 14.4, *) {
+                SCShareableContent.getCurrentProcessShareableContent(completionHandler: finish)
+            } else {
+                SCShareableContent.getExcludingDesktopWindows(false, onScreenWindowsOnly: true, completionHandler: finish)
+            }
+        }
+    }
+
+    private func captureImage(
+        contentFilter: SCContentFilter,
+        configuration: SCStreamConfiguration
+    ) async throws -> CGImage {
+        try await withCheckedThrowingContinuation { continuation in
+            SCScreenshotManager.captureImage(contentFilter: contentFilter, configuration: configuration) { image, error in
+                if let image {
+                    continuation.resume(returning: image)
+                } else {
+                    continuation.resume(throwing: error ?? SnapshotCaptureError.imageCaptureFailed)
+                }
+            }
+        }
+    }
+
+    private func reportSnapshotFailure(path: String) {
+        let message = "ScreenCaptureKit snapshot capture failed for \(path)\n"
+        if let data = message.data(using: .utf8) {
+            FileHandle.standardError.write(data)
+        }
     }
 
     private func makePokerIcon(size: CGFloat) -> NSImage {
@@ -135,6 +269,15 @@ final class PokerAppDelegate: NSObject, NSApplicationDelegate {
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
         true
     }
+}
+
+private enum SnapshotCaptureError: Error {
+    case shareableContentUnavailable
+    case imageCaptureFailed
+}
+
+private struct SendableBox<Value>: @unchecked Sendable {
+    let value: Value
 }
 
 @main

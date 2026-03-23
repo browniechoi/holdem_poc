@@ -1,0 +1,31 @@
+{
+  "live_turn": [
+    { "name": "pot_zone", "x": 0.12, "y": 0.42, "width": 0.38, "height": 0.27 }
+  ],
+  "all_in_turn": [
+    { "name": "pot_zone", "x": 0.12, "y": 0.42, "width": 0.38, "height": 0.27 }
+  ],
+  "showdown": [
+    { "name": "pot_zone", "x": 0.12, "y": 0.40, "width": 0.38, "height": 0.31 },
+    { "name": "bottom_center_footer", "x": 0.17, "y": 0.72, "width": 0.18, "height": 0.23 }
+  ],
+  "footer_showdown": [
+    { "name": "pot_zone", "x": 0.12, "y": 0.40, "width": 0.38, "height": 0.31 },
+    { "name": "bottom_center_footer", "x": 0.17, "y": 0.72, "width": 0.18, "height": 0.23 }
+  ],
+  "long_names": [
+    { "name": "top_name_band", "x": 0.02, "y": 0.10, "width": 0.46, "height": 0.16 },
+    { "name": "bottom_name_band", "x": 0.02, "y": 0.70, "width": 0.46, "height": 0.16 },
+    { "name": "pot_zone", "x": 0.12, "y": 0.42, "width": 0.38, "height": 0.27 }
+  ],
+  "long_footer_pills": [
+    { "name": "pot_zone", "x": 0.12, "y": 0.40, "width": 0.38, "height": 0.31 },
+    { "name": "bottom_left_footer", "x": 0.01, "y": 0.72, "width": 0.15, "height": 0.23 },
+    { "name": "bottom_center_footer", "x": 0.17, "y": 0.72, "width": 0.18, "height": 0.23 },
+    { "name": "bottom_right_footer", "x": 0.33, "y": 0.72, "width": 0.15, "height": 0.23 }
+  ],
+  "coach_turn": [
+    { "name": "pot_zone", "x": 0.12, "y": 0.42, "width": 0.38, "height": 0.27 },
+    { "name": "coach_note_panel", "x": 0.50, "y": 0.48, "width": 0.47, "height": 0.13 }
+  ]
+}
