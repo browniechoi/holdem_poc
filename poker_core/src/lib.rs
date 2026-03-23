@@ -235,6 +235,7 @@ struct WhyMetrics {
 #[derive(Serialize)]
 struct ActionEV {
     action: String,
+    action_code: u8,
     amount: i32,
     ev: f64,
     is_best: bool,
@@ -2093,6 +2094,30 @@ fn action_amount(g: &Game, a: Action) -> i32 {
     }
 }
 
+fn action_code_for(a: Action) -> u8 {
+    match a {
+        Action::Fold => 0,
+        Action::CheckCall => 1,
+        Action::BetQuarterPot => 2,
+        Action::BetThirdPot => 3,
+        Action::BetHalfPot => 4,
+        Action::BetThreeQuarterPot => 5,
+        Action::BetPot => 6,
+        Action::BetOverbet125Pot => 7,
+        Action::BetOverbet150Pot => 8,
+        Action::BetOverbet175Pot => 15,
+        Action::BetOverbet200Pot => 16,
+        Action::RaiseMin => 9,
+        Action::RaiseHalfPot => 10,
+        Action::RaiseThreeQuarterPot => 11,
+        Action::RaisePot => 12,
+        Action::RaiseOverbet125Pot => 13,
+        Action::RaiseOverbet150Pot => 14,
+        Action::RaiseOverbet175Pot => 17,
+        Action::RaiseOverbet200Pot => 18,
+    }
+}
+
 fn action_label(a: Action) -> &'static str {
     match a {
         Action::Fold => "fold",
@@ -2328,6 +2353,7 @@ fn actions_with_ev_json_str(g: &Game, iters: u32) -> String {
         ) = risk_reward_metrics(g, a);
         out.push(ActionEV {
             action: lab.to_string(),
+            action_code: action_code_for(a),
             amount: amt,
             ev,
             is_best,
