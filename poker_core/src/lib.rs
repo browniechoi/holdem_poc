@@ -2118,8 +2118,7 @@ fn action_label(a: Action) -> &'static str {
 }
 
 // ===== C ABI =====
-#[no_mangle]
-pub extern "C" fn pc_new_game(seed: u64, num_players: u8) -> *mut Game {
+fn new_game(seed: u64, num_players: u8) -> Game {
     let mut rng = StdRng::seed_from_u64(seed);
     let n = num_players.clamp(2, 8) as usize;
     let pool_profile = sample_table_profile(&mut rng);
@@ -2204,7 +2203,12 @@ pub extern "C" fn pc_new_game(seed: u64, num_players: u8) -> *mut Game {
     };
 
     start_new_hand(&mut g);
-    Box::into_raw(Box::new(g))
+    g
+}
+
+#[no_mangle]
+pub extern "C" fn pc_new_game(seed: u64, num_players: u8) -> *mut Game {
+    Box::into_raw(Box::new(new_game(seed, num_players)))
 }
 
 #[no_mangle]
@@ -2254,16 +2258,10 @@ pub extern "C" fn pc_state_json(ptr: *const Game) -> *mut c_char {
     CString::new(s).unwrap().into_raw()
 }
 
-#[no_mangle]
-pub extern "C" fn pc_actions_with_ev_json(ptr: *const Game, iters: u32) -> *mut c_char {
-    if ptr.is_null() {
-        return ptr::null_mut();
-    }
-    // SAFETY: caller provides a valid, non-null pointer for the lifetime of this call.
-    let g = unsafe { &*ptr };
+fn actions_with_ev_json_str(g: &Game, iters: u32) -> String {
     let acts = legal_actions(g);
     if acts.is_empty() {
-        return CString::new("[]").unwrap().into_raw();
+        return "[]".to_string();
     }
 
     let max_iters = (iters as usize).clamp(200, 1600);
@@ -2345,17 +2343,20 @@ pub extern "C" fn pc_actions_with_ev_json(ptr: *const Game, iters: u32) -> *mut 
         });
     }
 
-    let s = serde_json::to_string(&out).unwrap();
-    CString::new(s).unwrap().into_raw()
+    serde_json::to_string(&out).unwrap()
 }
 
 #[no_mangle]
-pub extern "C" fn pc_apply_user_action(ptr: *mut Game, action_code: u8) {
+pub extern "C" fn pc_actions_with_ev_json(ptr: *const Game, iters: u32) -> *mut c_char {
     if ptr.is_null() {
-        return;
+        return ptr::null_mut();
     }
-    // SAFETY: caller provides a valid, non-null pointer for the lifetime of this call.
-    let g = unsafe { &mut *ptr };
+    let g = unsafe { &*ptr };
+    let s = actions_with_ev_json_str(g, iters);
+    CString::new(s).unwrap().into_raw()
+}
+
+fn apply_user_action_code(g: &mut Game, action_code: u8) {
     let u = user_index(g);
     if g.to_act != u || g.hand_over {
         return;
@@ -2388,6 +2389,15 @@ pub extern "C" fn pc_apply_user_action(ptr: *mut Game, action_code: u8) {
     if !g.hand_over {
         advance_turn_or_runout(g, u);
     }
+}
+
+#[no_mangle]
+pub extern "C" fn pc_apply_user_action(ptr: *mut Game, action_code: u8) {
+    if ptr.is_null() {
+        return;
+    }
+    let g = unsafe { &mut *ptr };
+    apply_user_action_code(g, action_code);
 }
 
 #[no_mangle]
@@ -2435,14 +2445,7 @@ fn advance_ai_until_user_or_hand_end(g: &mut Game) {
     }
 }
 
-#[no_mangle]
-pub extern "C" fn pc_step_to_hand_end(ptr: *mut Game) {
-    if ptr.is_null() {
-        return;
-    }
-    // SAFETY: caller provides a valid, non-null pointer for the lifetime of this call.
-    let g = unsafe { &mut *ptr };
-
+fn step_to_hand_end_inner(g: &mut Game) {
     while !g.hand_over {
         let idx = g.to_act;
         if !can_act(&g.players[idx]) {
@@ -2470,12 +2473,15 @@ pub extern "C" fn pc_step_to_hand_end(ptr: *mut Game) {
 }
 
 #[no_mangle]
-pub extern "C" fn pc_step_playback_once(ptr: *mut Game) {
+pub extern "C" fn pc_step_to_hand_end(ptr: *mut Game) {
     if ptr.is_null() {
         return;
     }
-    // SAFETY: caller provides a valid, non-null pointer for the lifetime of this call.
     let g = unsafe { &mut *ptr };
+    step_to_hand_end_inner(g);
+}
+
+fn step_playback_once_inner(g: &mut Game) {
     if g.hand_over {
         return;
     }
@@ -2510,6 +2516,15 @@ pub extern "C" fn pc_step_playback_once(ptr: *mut Game) {
 }
 
 #[no_mangle]
+pub extern "C" fn pc_step_playback_once(ptr: *mut Game) {
+    if ptr.is_null() {
+        return;
+    }
+    let g = unsafe { &mut *ptr };
+    step_playback_once_inner(g);
+}
+
+#[no_mangle]
 pub extern "C" fn pc_start_new_training_hand(ptr: *mut Game) {
     if ptr.is_null() {
         return;
@@ -2527,6 +2542,55 @@ pub extern "C" fn pc_free_cstring(s: *mut c_char) {
     // SAFETY: pointer was allocated by CString::into_raw in this library.
     unsafe {
         drop(CString::from_raw(s));
+    }
+}
+
+#[cfg(target_arch = "wasm32")]
+mod wasm_api {
+    use super::*;
+    use wasm_bindgen::prelude::*;
+
+    #[wasm_bindgen]
+    pub struct WasmGame {
+        inner: Game,
+    }
+
+    #[wasm_bindgen]
+    impl WasmGame {
+        /// Create a new game. `seed` is a JS number (f64) to avoid BigInt.
+        #[wasm_bindgen(constructor)]
+        pub fn new(seed: f64, num_players: u8) -> WasmGame {
+            WasmGame { inner: new_game(seed as u64, num_players) }
+        }
+
+        pub fn state_json(&self) -> String {
+            let st = public_state(&self.inner);
+            serde_json::to_string(&st).unwrap()
+        }
+
+        pub fn actions_with_ev_json(&self, iters: u32) -> String {
+            actions_with_ev_json_str(&self.inner, iters)
+        }
+
+        pub fn apply_user_action(&mut self, action_code: u8) {
+            apply_user_action_code(&mut self.inner, action_code);
+        }
+
+        pub fn step_ai_until_user_or_hand_end(&mut self) {
+            advance_ai_until_user_or_hand_end(&mut self.inner);
+        }
+
+        pub fn step_to_hand_end(&mut self) {
+            step_to_hand_end_inner(&mut self.inner);
+        }
+
+        pub fn step_playback_once(&mut self) {
+            step_playback_once_inner(&mut self.inner);
+        }
+
+        pub fn start_new_training_hand(&mut self) {
+            start_new_hand(&mut self.inner);
+        }
     }
 }
 
