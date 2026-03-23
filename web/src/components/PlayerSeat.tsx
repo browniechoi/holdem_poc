@@ -7,8 +7,12 @@ interface Props {
   isSB: boolean
   isBB: boolean
   isActing: boolean
+  isWinner: boolean
   showCards: boolean   // true at showdown or for user always
   position: number     // seat index 0-5
+  isThinking?: boolean // bots deciding (loading phase)
+  isBotActing?: boolean // this specific bot is currently deciding (animation)
+  dealKey?: number     // increments each new hand to re-trigger deal animation
 }
 
 const ACTION_LABEL: Record<string, string> = {
@@ -27,14 +31,17 @@ function actionLabel(raw: string) {
   return raw
 }
 
-export function PlayerSeat({ player, isDealer, isSB, isBB, isActing, showCards, position }: Props) {
+export function PlayerSeat({ player, isDealer, isSB, isBB, isActing, isWinner, showCards, position, isThinking, isBotActing, dealKey }: Props) {
   const folded = !player.in_hand
   const classes = [
     'seat',
     `seat--pos${position}`,
     isActing ? 'seat--acting' : '',
-    folded ? 'seat--folded' : '',
+    isBotActing ? 'seat--bot-deciding' : '',
+    isWinner ? 'seat--winner' : '',
+    folded && !isWinner ? 'seat--folded' : '',
     player.is_user ? 'seat--user' : '',
+    isThinking && !folded && !player.is_user ? 'seat--thinking' : '',
   ].filter(Boolean).join(' ')
 
   return (
@@ -48,8 +55,20 @@ export function PlayerSeat({ player, isDealer, isSB, isBB, isActing, showCards, 
       <div className="seat-cards">
         {player.in_hand ? (
           (showCards && player.hole_cards.length === 2)
-            ? player.hole_cards.map((c, i) => <Card key={i} card={c} small />)
-            : [<Card key={0} faceDown small />, <Card key={1} faceDown small />]
+            ? player.hole_cards.map((c, i) => (
+                <Card key={`${dealKey ?? 0}-${i}`} card={c} small dealt />
+              ))
+            : [
+                <Card key={`${dealKey ?? 0}-0`} faceDown small dealt />,
+                <Card key={`${dealKey ?? 0}-1`} faceDown small dealt delay={0.08} />,
+              ]
+        ) : player.is_user && player.hole_cards.length === 2 ? (
+          // Show user's own cards even after folding — useful for learning
+          <div className="seat-cards--folded-user">
+            {player.hole_cards.map((c, i) => (
+              <Card key={i} card={c} small />
+            ))}
+          </div>
         ) : (
           <span className="seat-folded-x">✕</span>
         )}

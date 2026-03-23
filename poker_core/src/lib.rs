@@ -238,6 +238,7 @@ struct ActionEV {
     action_code: u8,
     amount: i32,
     ev: f64,
+    baseline_ev: f64,
     is_best: bool,
     reason: String,
     why: WhyMetrics,
@@ -535,8 +536,128 @@ fn reset_street_commitments(g: &mut Game) {
 }
 
 fn start_new_hand(g: &mut Game) {
-    // This POC starts from postflop training spots, not from raw preflop.
-    start_flop_training_spot(g);
+    start_preflop_hand(g);
+}
+
+fn start_preflop_hand(g: &mut Game) {
+    g.deck = new_shuffled_deck(&mut g.rng);
+    g.board.clear();
+    g.pot = 0;
+    g.hand_over = false;
+    g.winner = None;
+    g.winner_idxs.clear();
+    g.street = Street::Preflop;
+    g.action_log.clear();
+    push_log(g, "----- New Hand -----".to_string());
+
+    // Persistent bankroll across hands. If busted, reload/replace.
+    for i in 0..g.players.len() {
+        if g.players[i].is_user {
+            if g.players[i].stack <= 0 {
+                g.players[i].stack = STARTING_STACK;
+                push_log(
+                    g,
+                    format!(
+                        "You ran out of chips. Bankroll reset to {} for the next hand",
+                        STARTING_STACK
+                    ),
+                );
+            }
+        } else if g.players[i].stack <= 0 {
+            let old_name = g.players[i].name.clone();
+            let style = random_bot_style_for_profile(g.pool_profile, &mut g.rng);
+            let archetype = bot_archetype(style);
+            let base = meme_name_for(archetype, &mut g.rng);
+            let new_name = unique_bot_name(g, i, base);
+            let deposit = bot_respawn_deposit(style, &mut g.rng);
+            {
+                let p = &mut g.players[i];
+                p.name = new_name.clone();
+                p.style = style;
+                p.stack = deposit;
+            }
+            push_log(
+                g,
+                format!(
+                    "{} went bankrupt. Replaced by {} with {} chips",
+                    old_name, new_name, deposit
+                ),
+            );
+        }
+        let p = &mut g.players[i];
+        p.in_hand = true;
+        p.last_action = " ".to_string();
+        p.contributed_hand = 0;
+        p.committed_street = 0;
+        p.hand_rank = None;
+        p.hand_start_stack = p.stack;
+    }
+
+    // Deal hole cards to all players.
+    for i in 0..g.players.len() {
+        let c1 = g.deck.pop().unwrap();
+        let c2 = g.deck.pop().unwrap();
+        g.players[i].hole = [c1, c2];
+    }
+
+    g.dealer = next_idx(g.players.len(), g.dealer);
+    g.sb_idx = next_idx(g.players.len(), g.dealer);
+    g.bb_idx = next_idx(g.players.len(), g.sb_idx);
+    push_log(
+        g,
+        format!(
+            "Dealer: {} | SB: {} ({}) | BB: {} ({})",
+            player_label(g, g.dealer),
+            player_label(g, g.sb_idx),
+            g.sb,
+            player_label(g, g.bb_idx),
+            g.bb
+        ),
+    );
+
+    // Post blinds.
+    let sb_paid = commit_chips(g, g.sb_idx, g.sb);
+    g.players[g.sb_idx].last_action = format!("post {}", sb_paid);
+    push_log(g, format!("{} posts SB {}", player_label(g, g.sb_idx), sb_paid));
+
+    let bb_paid = commit_chips(g, g.bb_idx, g.bb);
+    g.players[g.bb_idx].last_action = format!("post {}", bb_paid);
+    push_log(g, format!("{} posts BB {}", player_label(g, g.bb_idx), bb_paid));
+
+    // Set up preflop betting: BB is the forced open.
+    g.bet_to_call = g.bb;
+    g.street_bet_done = true;
+    g.raises_this_street = 0;
+    g.street_aggression = StreetAggressionState::default();
+    // All active players need to act, including BB for the option.
+    g.street_actions_left = acting_count(g);
+
+    // UTG acts first (player after BB).
+    g.to_act = next_idx(g.players.len(), g.bb_idx);
+
+    let u = user_index(g);
+    push_log(
+        g,
+        format!(
+            "Your hole cards: {} {}",
+            card_to_str(g.players[u].hole[0]),
+            card_to_str(g.players[u].hole[1])
+        ),
+    );
+
+    advance_ai_until_user_or_hand_end(g);
+
+    if !g.hand_over && g.to_act == u {
+        let to_call = (g.bet_to_call - g.players[u].committed_street).max(0);
+        if to_call > 0 {
+            push_log(
+                g,
+                format!("Your decision: call {} into pot {}", to_call, g.pot + to_call),
+            );
+        } else {
+            push_log(g, "Your decision: check or bet".to_string());
+        }
+    }
 }
 
 fn start_flop_training_spot(g: &mut Game) {
@@ -766,7 +887,7 @@ fn legal_actions(g: &Game) -> Vec<Action> {
         // facing a bet: fold / call, plus Phase 1 capped postflop raises.
         let mut acts = vec![Action::Fold, Action::CheckCall];
         let need = (g.bet_to_call - g.players[g.to_act].committed_street).max(0);
-        if g.street != Street::Preflop && g.raises_this_street < 2 && g.players[g.to_act].stack > need {
+        if g.raises_this_street < 2 && g.players[g.to_act].stack > need {
             acts.push(Action::RaiseMin);
             acts.push(Action::RaiseHalfPot);
             acts.push(Action::RaiseThreeQuarterPot);
@@ -882,7 +1003,7 @@ fn apply_action(g: &mut Game, idx: usize, a: Action) {
         | Action::RaiseOverbet150Pot
         | Action::RaiseOverbet175Pot
         | Action::RaiseOverbet200Pot => {
-            if g.bet_to_call == 0 || g.street == Street::Preflop || g.raises_this_street >= 2 {
+            if g.bet_to_call == 0 || g.raises_this_street >= 2 {
                 return;
             }
             let need = (g.bet_to_call - g.players[idx].committed_street).max(0);
@@ -964,10 +1085,11 @@ fn deal_next_street(g: &mut Game) {
             push_log(
                 g,
                 format!(
-                    "Flop dealt: {} {} {}",
+                    "── Flop: {} {} {}  (pot {})",
                     card_to_str(g.board[0]),
                     card_to_str(g.board[1]),
-                    card_to_str(g.board[2])
+                    card_to_str(g.board[2]),
+                    g.pot
                 ),
             );
         }
@@ -976,7 +1098,7 @@ fn deal_next_street(g: &mut Game) {
             g.board.push(g.deck.pop().unwrap());
             g.street = Street::Turn;
             if let Some(card) = g.board.get(3) {
-                push_log(g, format!("Turn: {}", card_to_str(*card)));
+                push_log(g, format!("── Turn: {}  (pot {})", card_to_str(*card), g.pot));
             }
         }
         Street::Turn => {
@@ -984,12 +1106,12 @@ fn deal_next_street(g: &mut Game) {
             g.board.push(g.deck.pop().unwrap());
             g.street = Street::River;
             if let Some(card) = g.board.get(4) {
-                push_log(g, format!("River: {}", card_to_str(*card)));
+                push_log(g, format!("── River: {}  (pot {})", card_to_str(*card), g.pot));
             }
         }
         Street::River => {
             g.street = Street::Showdown;
-            push_log(g, "Showdown".to_string());
+            push_log(g, format!("── Showdown  (pot {})", g.pot));
             showdown(g);
         }
         Street::Showdown => {}
@@ -1294,8 +1416,7 @@ fn bot_choose(g: &Game, idx: usize) -> Action {
     } else {
         // call / fold / (sometimes) raise
         let need = (g.bet_to_call - g.players[idx].committed_street).max(0);
-        let raise_gate = g.street != Street::Preflop
-            && g.raises_this_street < 2
+        let raise_gate = g.raises_this_street < 2
             && g.players[idx].stack > need + g.bb * 2;
         let mut call_bias = base - (0.35 + s.tight * 0.12) + s.calliness * 0.1 + s.skill * 0.08;
         let mut raise_threshold = 0.42;
@@ -1370,6 +1491,84 @@ fn simulate_once(mut g: Game) -> i32 {
 
     let end_stack = g.players[u].stack;
     end_stack - start_stack
+}
+
+// Baseline opponent model: fold/call/raise with fixed probabilities (independent of style).
+// Used to compute a "neutral" EV unaffected by specific bot personalities at the table.
+fn bot_choose_random(g: &Game, rng: &mut StdRng) -> Action {
+    let r: f64 = rng.gen();
+    if g.bet_to_call > 0 {
+        let can_raise = g.raises_this_street < 2;
+        if r < 0.30 {
+            Action::Fold
+        } else if !can_raise || r < 0.78 {
+            Action::CheckCall
+        } else {
+            Action::RaiseMin
+        }
+    } else {
+        if r < 0.55 {
+            Action::CheckCall // check
+        } else if r < 0.80 {
+            Action::BetHalfPot
+        } else {
+            Action::BetPot
+        }
+    }
+}
+
+// Like simulate_action_on_world but with random opponents instead of styled bots.
+fn simulate_action_baseline(g: &Game, user_action: Action, world_seed: u64) -> i32 {
+    let u = user_index(g);
+    // XOR with a distinct constant so baseline and pool sims diverge even with the same seed.
+    let mut rng = StdRng::seed_from_u64(world_seed ^ 0x626173655f6576u64);
+    let mut g2 = g.clone();
+    g2.log_enabled = false;
+    g2.action_log.clear();
+    g2.track_user_patterns = false;
+    resample_hidden_information(&mut g2, u, &mut rng);
+    let pre_action_stack = g2.players[u].stack;
+
+    apply_action(&mut g2, u, user_action);
+    if !g2.hand_over {
+        advance_turn_or_runout(&mut g2, u);
+    }
+
+    let settled_stack = g2.players[u].stack;
+    if g2.hand_over {
+        return settled_stack - pre_action_stack;
+    }
+
+    loop {
+        if g2.hand_over {
+            break;
+        }
+        let idx = g2.to_act;
+        if !can_act(&g2.players[idx]) {
+            if let Some(nxt) = next_acting_player(&g2, idx) {
+                g2.to_act = nxt;
+                continue;
+            }
+            if g2.street != Street::Showdown {
+                deal_next_street(&mut g2);
+                continue;
+            }
+            break;
+        }
+        let a = if g2.players[idx].is_user {
+            Action::CheckCall
+        } else {
+            bot_choose_random(&g2, &mut rng)
+        };
+        apply_action(&mut g2, idx, a);
+        if g2.hand_over {
+            break;
+        }
+        advance_turn_or_runout(&mut g2, idx);
+    }
+
+    let end_stack = g2.players[u].stack;
+    end_stack - pre_action_stack
 }
 
 fn mix_u64(mut x: u64) -> u64 {
@@ -1773,7 +1972,7 @@ fn unique_bot_name(g: &Game, idx: usize, base: String) -> String {
 
 fn board_texture_summary(board: &[Card]) -> String {
     if board.is_empty() {
-        return "Board is undeveloped.".to_string();
+        return String::new(); // preflop — no community cards yet
     }
 
     let mut suit_counts = [0u8; 4];
@@ -1830,6 +2029,13 @@ fn user_hole_summary(g: &Game) -> String {
     }
     if r1 == r2 && r1 >= 11 {
         return "You hold a high pocket pair.".to_string();
+    }
+    if r1 == r2 {
+        if r1 >= 8 {
+            return "You hold a medium pocket pair.".to_string();
+        } else {
+            return "You hold a small pocket pair.".to_string();
+        }
     }
     if hi >= 13 && lo >= 10 && suited {
         return "You hold strong suited broadway cards.".to_string();
@@ -1903,6 +2109,9 @@ fn has_straight_draw_from_ranks(ranks: &HashSet<u8>) -> bool {
 }
 
 fn user_draw_outlook(g: &Game) -> String {
+    if g.board.is_empty() {
+        return String::new();
+    }
     if g.board.len() >= 5 {
         return "No future cards left (river reached).".to_string();
     }
@@ -2329,6 +2538,20 @@ fn actions_with_ev_json_str(g: &Game, iters: u32) -> String {
     let explain_iters = ((used_iters / 2).max(80)).min(600);
     let state_metrics = compute_state_why_metrics(g, explain_iters);
 
+    // Baseline EV: simulate same worlds but with random opponents (style-neutral).
+    // 200 iters is enough for a useful signal without doubling compute time.
+    let baseline_iters = 200.min(max_stage_iters);
+    let mut baseline_totals = vec![0i64; acts.len()];
+    for world_seed in &worlds[..baseline_iters] {
+        for (idx, action) in acts.iter().enumerate() {
+            baseline_totals[idx] += simulate_action_baseline(g, *action, *world_seed) as i64;
+        }
+    }
+    let baseline_evs: Vec<f64> = baseline_totals
+        .iter()
+        .map(|&t| t as f64 / baseline_iters as f64)
+        .collect();
+
     let mut out: Vec<ActionEV> = vec![];
     let best_ev = evs.iter().copied().fold(f64::NEG_INFINITY, f64::max);
     let mut sorted_evs: Vec<f64> = evs.clone();
@@ -2356,6 +2579,7 @@ fn actions_with_ev_json_str(g: &Game, iters: u32) -> String {
             action_code: action_code_for(a),
             amount: amt,
             ev,
+            baseline_ev: baseline_evs[idx],
             is_best,
             reason: action_reason(a, ev, best_ev, second_ev, used_iters, &state_metrics),
             why: action_why(
@@ -2617,6 +2841,17 @@ mod wasm_api {
         pub fn start_new_training_hand(&mut self) {
             start_new_hand(&mut self.inner);
         }
+
+        /// Returns a deep clone of the current game state as a new WasmGame.
+        /// Used by the frontend to checkpoint before each user action (undo support).
+        pub fn snapshot(&self) -> WasmGame {
+            WasmGame { inner: self.inner.clone() }
+        }
+
+        /// Overwrites this game's state with the snapshot's state (undo).
+        pub fn restore_from(&mut self, snap: &WasmGame) {
+            self.inner = snap.inner.clone();
+        }
     }
 }
 
@@ -2854,6 +3089,11 @@ mod tests {
         g.street_bet_done = false;
         g.raises_this_street = 0;
         g.street_actions_left = 0;
+        // Ensure the board has 3 flop cards so deal_next_street can proceed to turn/river/showdown.
+        g.board.clear();
+        while g.board.len() < 3 {
+            g.board.push(g.deck.pop().unwrap());
+        }
 
         deal_next_street(g);
 
@@ -2895,6 +3135,11 @@ mod tests {
         g.raises_this_street = 0;
         g.street_actions_left = 0;
         g.to_act = u;
+        // Ensure the board has 3 flop cards so auto-runout can proceed to showdown.
+        g.board.clear();
+        while g.board.len() < 3 {
+            g.board.push(g.deck.pop().unwrap());
+        }
 
         advance_ai_until_user_or_hand_end(g);
 

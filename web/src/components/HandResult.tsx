@@ -1,12 +1,20 @@
 import type { PublicState } from '../types'
 import { Card } from './Card'
 
+interface DecisionRecord {
+  label: string
+  ev: number
+  bestEV: number
+  nearOptimal: boolean
+}
+
 interface Props {
   state: PublicState
+  decisions: DecisionRecord[]
   onNext: () => void
 }
 
-export function HandResult({ state, onNext }: Props) {
+export function HandResult({ state, decisions, onNext }: Props) {
   const user = state.players.find(p => p.is_user)
   const won = user && state.winner_names.includes(user.name)
   const delta = user?.hand_delta ?? 0
@@ -36,11 +44,18 @@ export function HandResult({ state, onNext }: Props) {
         </div>
       )}
 
-      <div className="hand-result-log">
-        {state.action_log.slice(-6).map((line, i) => (
-          <div key={i} className="hand-result-log-line">{line}</div>
-        ))}
-      </div>
+      {decisions.length > 0 && (
+        <div className="decision-summary">
+          <div className="decision-summary-title">Your decisions this hand</div>
+          <div className="decision-summary-rows">
+            {decisions.map((d, i) => (
+              <div key={i} className={`decision-chip ${d.nearOptimal ? 'optimal' : 'subopt'}`}>
+                {d.label} {d.nearOptimal ? '✓' : `✗ (best: ${d.bestEV >= 0 ? '+' : ''}${d.bestEV.toFixed(1)})`}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       <button className="next-hand-btn" onClick={onNext}>
         Next hand →
@@ -48,3 +63,6 @@ export function HandResult({ state, onNext }: Props) {
     </div>
   )
 }
+
+// Export the type so App.tsx can use it
+export type { DecisionRecord }

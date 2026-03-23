@@ -59,6 +59,7 @@ export interface ActionEV {
   action_code: number
   amount: number
   ev: number
+  baseline_ev: number
   is_best: boolean
   reason: string
   why: WhyMetrics

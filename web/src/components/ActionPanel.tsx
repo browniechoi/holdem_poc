@@ -1,31 +1,36 @@
 import type { ActionEV } from '../types'
+import { chenEval } from '../chenFormula'
 
 interface Props {
   actions: ActionEV[]
   onAct: (code: number) => void
   disabled?: boolean
+  showEV: boolean
+  onToggleEV: () => void
+  street: string
+  userHole: string[]
 }
 
-const ACTION_DISPLAY: Record<string, string> = {
+export const ACTION_DISPLAY: Record<string, string> = {
   fold: 'Fold',
   'check/call': 'Check / Call',
   raise_min: 'Min Raise',
-  bet_quarter_pot: '¼ Pot',
-  bet_third_pot: '⅓ Pot',
-  bet_half_pot: '½ Pot',
-  bet_three_quarter_pot: '¾ Pot',
-  bet_pot: 'Pot',
-  bet_overbet_125_pot: '1.25× Pot',
-  bet_overbet_150_pot: '1.5× Pot',
-  bet_overbet_175_pot: '1.75× Pot',
-  bet_overbet_200_pot: '2× Pot',
-  raise_half_pot: 'Raise ½',
-  raise_three_quarter_pot: 'Raise ¾',
+  bet_quarter_pot: 'Bet 1/4',
+  bet_third_pot: 'Bet 1/3',
+  bet_half_pot: 'Bet 1/2',
+  bet_three_quarter_pot: 'Bet 3/4',
+  bet_pot: 'Bet Pot',
+  bet_overbet_125_pot: 'Bet 1.25x',
+  bet_overbet_150_pot: 'Bet 1.5x',
+  bet_overbet_175_pot: 'Bet 1.75x',
+  bet_overbet_200_pot: 'Bet 2x',
+  raise_half_pot: 'Raise 1/2',
+  raise_three_quarter_pot: 'Raise 3/4',
   raise_pot: 'Raise Pot',
-  raise_overbet_125_pot: 'Raise 1.25×',
-  raise_overbet_150_pot: 'Raise 1.5×',
-  raise_overbet_175_pot: 'Raise 1.75×',
-  raise_overbet_200_pot: 'Raise 2×',
+  raise_overbet_125_pot: 'Raise 1.25x',
+  raise_overbet_150_pot: 'Raise 1.5x',
+  raise_overbet_175_pot: 'Raise 1.75x',
+  raise_overbet_200_pot: 'Raise 2x',
 }
 
 function fmt(ev: number) {
@@ -33,27 +38,57 @@ function fmt(ev: number) {
   return ev >= 0 ? `+${abs}` : `−${abs}`
 }
 
-function isFold(a: ActionEV) {
-  return a.action === 'fold'
+/** Remove actions whose chip amount duplicates an earlier entry (same-stack corner case). */
+function dedup(actions: ActionEV[]): ActionEV[] {
+  const seen = new Set<number>()
+  return actions.filter(a => {
+    if (a.action === 'fold' || a.action === 'check/call') return true
+    if (a.amount <= 0) return true
+    if (seen.has(a.amount)) return false
+    seen.add(a.amount)
+    return true
+  })
 }
 
-export function ActionPanel({ actions, onAct, disabled }: Props) {
-  if (!actions.length) return null
+export function ActionPanel({ actions, onAct, disabled, showEV, onToggleEV, street, userHole }: Props) {
+  const visible = dedup(actions)
+  if (!visible.length) return null
 
-  const best = actions.find(a => a.is_best)
+  const best = visible.find(a => a.is_best)
+  const isPreflop = street === 'preflop'
+  const chen = isPreflop && userHole.length === 2
+    ? chenEval(userHole[0], userHole[1])
+    : null
 
   return (
     <div className="action-panel">
-      {best && (
-        <div className="action-hint">
-          <span className="action-hint-label">Best:</span> {best.reason}
+      <div className="action-top-row">
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 1 }}>
+          {chen && (
+            <span
+              className={`chen-badge chen-badge--${chen.tier}`}
+              data-tip={chen.tip}
+            >
+              Score {chen.score} · {chen.label}
+            </span>
+          )}
+          {showEV && best ? (
+            <div className="action-hint">
+              <span className="action-hint-label">Best:</span> {best.reason}
+            </div>
+          ) : (
+            <div className="action-hint action-hint--hidden">Decide first, then reveal EV</div>
+          )}
         </div>
-      )}
+        <button className="ev-toggle-btn" onClick={onToggleEV}>
+          {showEV ? 'Hide EV' : 'Show EV'}
+        </button>
+      </div>
 
       <div className="action-buttons">
-        {actions.map(a => {
+        {visible.map(a => {
           const label = ACTION_DISPLAY[a.action] ?? a.action
-          const amtLabel = a.amount > 0 && !isFold(a) ? ` $${a.amount}` : ''
+          const amtLabel = a.amount > 0 && a.action !== 'fold' ? ` $${a.amount}` : ''
           const evPositive = a.ev >= 0
 
           return (
@@ -61,31 +96,43 @@ export function ActionPanel({ actions, onAct, disabled }: Props) {
               key={a.action_code}
               className={[
                 'action-btn',
-                a.is_best ? 'action-btn--best' : '',
-                isFold(a) ? 'action-btn--fold' : '',
+                showEV && a.is_best ? 'action-btn--best' : '',
+                a.action === 'fold' ? 'action-btn--fold' : '',
               ].filter(Boolean).join(' ')}
               onClick={() => onAct(a.action_code)}
               disabled={disabled}
             >
               <span className="action-btn-label">{label}{amtLabel}</span>
-              <span className={`action-btn-ev ${evPositive ? 'ev-pos' : 'ev-neg'}`}>
-                {fmt(a.ev)}
-              </span>
-              {a.is_best && <span className="action-btn-star">★</span>}
+              {showEV && (
+                <span className={`action-btn-ev ${evPositive ? 'ev-pos' : 'ev-neg'}`}>
+                  {fmt(a.ev)}
+                </span>
+              )}
+              {showEV && a.is_best && <span className="action-btn-star">★</span>}
             </button>
           )
         })}
       </div>
 
-      {best && (
+      {showEV && best && (
         <div className="action-why">
-          <span>{best.why.hand_class}</span>
-          {best.why.board_texture && <span>{best.why.board_texture}</span>}
-          {best.why.made_hand_now && <span>{best.why.made_hand_now}</span>}
-          {best.why.draw_outlook && <span>{best.why.draw_outlook}</span>}
-          <span>Equity ~{best.why.estimated_equity_pct.toFixed(0)}%</span>
+          {best.why.hand_class && <span className="why-pill">{best.why.hand_class}</span>}
+          {best.why.board_texture && <span className="why-pill">{best.why.board_texture}</span>}
+          {best.why.made_hand_now && <span className="why-pill">{best.why.made_hand_now}</span>}
+          {best.why.draw_outlook && <span className="why-pill">{best.why.draw_outlook}</span>}
+          <span
+            className="why-pill"
+            data-tip="Your estimated probability of winning at showdown. Higher = stronger hand."
+          >
+            Equity ~{best.why.estimated_equity_pct.toFixed(0)}%
+          </span>
           {best.why.to_call > 0 && (
-            <span>Pot odds {best.why.pot_odds_pct.toFixed(0)}%</span>
+            <span
+              className="why-pill"
+              data-tip={`You need ${best.why.required_equity_pct.toFixed(0)}% equity to break even. Pot odds = call ÷ (pot + call).`}
+            >
+              Pot odds {best.why.pot_odds_pct.toFixed(0)}%
+            </span>
           )}
         </div>
       )}
