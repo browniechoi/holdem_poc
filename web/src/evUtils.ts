@@ -64,7 +64,14 @@ export function primaryIsClearBest(a: ActionEV, isPreflop: boolean) {
 
 export function isNearOptimal(chosen: ActionEV, allActions: ActionEV[]): boolean {
   const bestEV = Math.max(...allActions.map(a => a.ev))
-  const tolerance = Math.max(Math.abs(bestEV) * 0.05, 2.0)
+  // Base tolerance: 5% of best EV, floor 2 chips
+  let tolerance = Math.max(Math.abs(bestEV) * 0.05, 2.0)
+  // When best EV is near zero (fold-or-play spots), widen tolerance so that
+  // slightly -EV plays aren't penalised. In live poker the slower deal speed
+  // makes playing marginal hands reasonable for range balance.
+  if (Math.abs(bestEV) < 5) {
+    tolerance = Math.max(tolerance, 8.0)
+  }
   return chosen.ev >= bestEV - tolerance
 }
 
