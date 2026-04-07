@@ -30,6 +30,7 @@ type Phase = 'loading' | 'user_turn' | 'reviewing' | 'bot_acting' | 'hand_over'
 
 interface SessionStats {
   handsPlayed: number
+  netGain: number
 }
 
 interface ReviewData {
@@ -53,7 +54,7 @@ export default function App() {
   const [showEV, setShowEV] = useState(false)
   const [review, setReview] = useState<ReviewData | null>(null)
   const [reviewState, setReviewState] = useState<PublicState | null>(null)
-  const [session, setSession] = useState<SessionStats>({ handsPlayed: 0 })
+  const [session, setSession] = useState<SessionStats>({ handsPlayed: 0, netGain: 0 })
   const [gradedPreflopLedger, setGradedPreflopLedger] = useState<boolean[]>([])
   const [sessionDecisions, setSessionDecisions] = useState<DecisionRecord[]>([])
   const [showRankings, setShowRankings] = useState(false)
@@ -237,7 +238,8 @@ export default function App() {
   const handleNextHand = useCallback(() => {
     const g = gameRef.current
     if (!g) return
-    setSession(s => ({ ...s, handsPlayed: s.handsPlayed + 1 }))
+    const userDelta = state?.players.find(p => p.is_user)?.hand_delta ?? 0
+    setSession(s => ({ ...s, handsPlayed: s.handsPlayed + 1, netGain: s.netGain + userDelta }))
     setReviewState(null)
     setUserFolded(false)
     setDealKey(k => k + 1)
@@ -246,7 +248,7 @@ export default function App() {
       g.newHand()
       refresh(g)
     }, 0)
-  }, [refresh])
+  }, [refresh, state])
 
   if (!state) {
     return <div className="loading-screen">Loading engine…</div>
@@ -278,6 +280,9 @@ export default function App() {
           )}
           <span className="app-session">
             Hands: <strong>{session.handsPlayed}</strong>
+            {session.handsPlayed > 0 && (
+              <> · Net: <strong className={session.netGain >= 0 ? '' : 'app-net-neg'}>{session.netGain >= 0 ? '+' : ''}{session.netGain}</strong></>
+            )}
             {gradedPreflopDecisions > 0 && (
               <> · Graded preflop: <strong>{Math.round(gradedPreflopNearOpt / gradedPreflopDecisions * 100)}%</strong> ({gradedPreflopNearOpt}/{gradedPreflopDecisions})</>
             )}

@@ -74,6 +74,7 @@ body {
 .app-pot-contrib strong { color: #f0c060; font-weight: 600; }
 .app-session { font-size: .75rem; color: var(--muted); }
 .app-session strong { color: var(--green); }
+.app-net-neg { color: #c03030 !important; }
 
 .log-strip {
   background: var(--surface);

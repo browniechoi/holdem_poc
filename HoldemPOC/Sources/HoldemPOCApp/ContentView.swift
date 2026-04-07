@@ -50,12 +50,8 @@ private func potSizeLabel(_ raw: String) -> String? {
         return "75% Pot"
     case "bet_pot", "raise_pot":
         return "100% Pot"
-    case "bet_overbet_125_pot", "raise_overbet_125_pot":
-        return "125% Pot"
     case "bet_overbet_150_pot", "raise_overbet_150_pot":
         return "150% Pot"
-    case "bet_overbet_175_pot", "raise_overbet_175_pot":
-        return "175% Pot"
     case "bet_overbet_200_pot", "raise_overbet_200_pot":
         return "200% Pot"
     default:
@@ -4823,12 +4819,8 @@ final class VM: ObservableObject {
             code = 5
         case "bet_pot":
             code = 6
-        case "bet_overbet_125_pot":
-            code = 7
         case "bet_overbet_150_pot":
             code = 8
-        case "bet_overbet_175_pot":
-            code = 15
         case "bet_overbet_200_pot":
             code = 16
         case "raise_min":
@@ -4839,12 +4831,8 @@ final class VM: ObservableObject {
             code = 11
         case "raise_pot":
             code = 12
-        case "raise_overbet_125_pot":
-            code = 13
         case "raise_overbet_150_pot":
             code = 14
-        case "raise_overbet_175_pot":
-            code = 17
         case "raise_overbet_200_pot":
             code = 18
         default:

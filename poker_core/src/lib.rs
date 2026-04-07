@@ -159,17 +159,13 @@ enum Action {
     BetHalfPot,
     BetThreeQuarterPot,
     BetPot,
-    BetOverbet125Pot,
     BetOverbet150Pot,
-    BetOverbet175Pot,
     BetOverbet200Pot,
     RaiseMin,
     RaiseHalfPot,
     RaiseThreeQuarterPot,
     RaisePot,
-    RaiseOverbet125Pot,
     RaiseOverbet150Pot,
-    RaiseOverbet175Pot,
     RaiseOverbet200Pot,
 }
 
@@ -366,10 +362,7 @@ fn street_name(s: Street) -> &'static str {
 fn is_high_overbet(a: Action) -> bool {
     matches!(
         a,
-        Action::BetOverbet175Pot
-            | Action::BetOverbet200Pot
-            | Action::RaiseOverbet175Pot
-            | Action::RaiseOverbet200Pot
+        Action::BetOverbet200Pot | Action::RaiseOverbet200Pot
     )
 }
 
@@ -383,16 +376,12 @@ fn aggression_tell(a: Action) -> Option<AggressionTell> {
         Action::BetHalfPot
         | Action::BetThreeQuarterPot
         | Action::BetPot
-        | Action::BetOverbet125Pot
         | Action::RaiseHalfPot
         | Action::RaiseThreeQuarterPot
-        | Action::RaisePot
-        | Action::RaiseOverbet125Pot => Some(AggressionTell::Medium),
+        | Action::RaisePot => Some(AggressionTell::Medium),
         Action::BetOverbet150Pot
-        | Action::BetOverbet175Pot
         | Action::BetOverbet200Pot
         | Action::RaiseOverbet150Pot
-        | Action::RaiseOverbet175Pot
         | Action::RaiseOverbet200Pot => Some(AggressionTell::Overbet),
         _ => None,
     }
@@ -984,11 +973,9 @@ fn legal_actions(g: &Game) -> Vec<Action> {
             Action::BetHalfPot,
             Action::BetThreeQuarterPot,
             Action::BetPot,
-            Action::BetOverbet125Pot,
             Action::BetOverbet150Pot,
         ];
         if allow_high_overbet {
-            acts.push(Action::BetOverbet175Pot);
             acts.push(Action::BetOverbet200Pot);
         }
         acts
@@ -1001,10 +988,8 @@ fn legal_actions(g: &Game) -> Vec<Action> {
             acts.push(Action::RaiseHalfPot);
             acts.push(Action::RaiseThreeQuarterPot);
             acts.push(Action::RaisePot);
-            acts.push(Action::RaiseOverbet125Pot);
             acts.push(Action::RaiseOverbet150Pot);
             if allow_high_overbet {
-                acts.push(Action::RaiseOverbet175Pot);
                 acts.push(Action::RaiseOverbet200Pot);
             }
         }
@@ -1069,9 +1054,7 @@ fn apply_action(g: &mut Game, idx: usize, a: Action) {
         | Action::BetHalfPot
         | Action::BetThreeQuarterPot
         | Action::BetPot
-        | Action::BetOverbet125Pot
         | Action::BetOverbet150Pot
-        | Action::BetOverbet175Pot
         | Action::BetOverbet200Pot => {
             if g.bet_to_call != 0 || g.street_bet_done {
                 return;
@@ -1082,9 +1065,7 @@ fn apply_action(g: &mut Game, idx: usize, a: Action) {
                 Action::BetHalfPot => (g.pot / 2).max(g.bb),
                 Action::BetThreeQuarterPot => ((g.pot * 3) / 4).max(g.bb),
                 Action::BetPot => g.pot.max(g.bb),
-                Action::BetOverbet125Pot => ((g.pot * 5) / 4).max(g.bb),
                 Action::BetOverbet150Pot => ((g.pot * 3) / 2).max(g.bb),
-                Action::BetOverbet175Pot => ((g.pot * 7) / 4).max(g.bb),
                 Action::BetOverbet200Pot => (g.pot * 2).max(g.bb),
                 _ => 0,
             };
@@ -1108,9 +1089,7 @@ fn apply_action(g: &mut Game, idx: usize, a: Action) {
         | Action::RaiseHalfPot
         | Action::RaiseThreeQuarterPot
         | Action::RaisePot
-        | Action::RaiseOverbet125Pot
         | Action::RaiseOverbet150Pot
-        | Action::RaiseOverbet175Pot
         | Action::RaiseOverbet200Pot => {
             if g.bet_to_call == 0 || g.raises_this_street >= 2 {
                 return;
@@ -1121,9 +1100,7 @@ fn apply_action(g: &mut Game, idx: usize, a: Action) {
                 Action::RaiseHalfPot => (g.pot / 2).max(g.bb * 2),
                 Action::RaiseThreeQuarterPot => ((g.pot * 3) / 4).max(g.bb * 2),
                 Action::RaisePot => g.pot.max(g.bb * 3),
-                Action::RaiseOverbet125Pot => ((g.pot * 5) / 4).max(g.bb * 2),
                 Action::RaiseOverbet150Pot => ((g.pot * 3) / 2).max(g.bb * 2),
-                Action::RaiseOverbet175Pot => ((g.pot * 7) / 4).max(g.bb * 2),
                 Action::RaiseOverbet200Pot => (g.pot * 2).max(g.bb * 2),
                 _ => 0,
             };
@@ -1513,14 +1490,10 @@ fn draw_class_bonus(draw: DrawClass) -> f64 {
 
 fn aggressive_action_for_signal(signal: f64, facing_bet: bool, allow_high_overbet: bool) -> Action {
     if facing_bet {
-        if allow_high_overbet && signal > 0.96 {
+        if allow_high_overbet && signal > 0.93 {
             Action::RaiseOverbet200Pot
-        } else if allow_high_overbet && signal > 0.89 {
-            Action::RaiseOverbet175Pot
-        } else if signal > 0.83 {
+        } else if signal > 0.80 {
             Action::RaiseOverbet150Pot
-        } else if signal > 0.76 {
-            Action::RaiseOverbet125Pot
         } else if signal > 0.67 {
             Action::RaisePot
         } else if signal > 0.58 {
@@ -1530,14 +1503,10 @@ fn aggressive_action_for_signal(signal: f64, facing_bet: bool, allow_high_overbe
         } else {
             Action::RaiseMin
         }
-    } else if allow_high_overbet && signal > 0.96 {
+    } else if allow_high_overbet && signal > 0.93 {
         Action::BetOverbet200Pot
-    } else if allow_high_overbet && signal > 0.89 {
-        Action::BetOverbet175Pot
-    } else if signal > 0.83 {
+    } else if signal > 0.78 {
         Action::BetOverbet150Pot
-    } else if signal > 0.75 {
-        Action::BetOverbet125Pot
     } else if signal > 0.66 {
         Action::BetPot
     } else if signal > 0.56 {
@@ -3003,17 +2972,13 @@ fn preferred_actions_for_family(g: &Game, family: BaselineActionFamily) -> Vec<A
             if facing_bet {
                 vec![
                     Action::RaisePot,
-                    Action::RaiseOverbet125Pot,
                     Action::RaiseOverbet150Pot,
-                    Action::RaiseOverbet175Pot,
                     Action::RaiseOverbet200Pot,
                 ]
             } else {
                 vec![
                     Action::BetPot,
-                    Action::BetOverbet125Pot,
                     Action::BetOverbet150Pot,
-                    Action::BetOverbet175Pot,
                     Action::BetOverbet200Pot,
                 ]
             }
@@ -3182,9 +3147,7 @@ fn action_reason(
         | Action::RaiseHalfPot
         | Action::RaiseThreeQuarterPot
         | Action::RaisePot
-        | Action::RaiseOverbet125Pot
         | Action::RaiseOverbet150Pot
-        | Action::RaiseOverbet175Pot
         | Action::RaiseOverbet200Pot => format!(
             "Raise size underperformed by {:.1} EV chips. Board is {} and your class is '{}'.",
             ev_gap, m.board_texture, m.hand_class
@@ -3262,43 +3225,34 @@ fn action_amount(g: &Game, a: Action) -> i32 {
         Action::BetHalfPot => ((g.pot / 2).max(g.bb)).min(p.stack),
         Action::BetThreeQuarterPot => (((g.pot * 3) / 4).max(g.bb)).min(p.stack),
         Action::BetPot => (g.pot.max(g.bb)).min(p.stack),
-        Action::BetOverbet125Pot => (((g.pot * 5) / 4).max(g.bb)).min(p.stack),
         Action::BetOverbet150Pot => (((g.pot * 3) / 2).max(g.bb)).min(p.stack),
-        Action::BetOverbet175Pot => (((g.pot * 7) / 4).max(g.bb)).min(p.stack),
         Action::BetOverbet200Pot => ((g.pot * 2).max(g.bb)).min(p.stack),
         Action::RaiseMin => (need + g.bb * 2).min(p.stack),
         Action::RaiseHalfPot => (need + (g.pot / 2).max(g.bb * 2)).min(p.stack),
         Action::RaiseThreeQuarterPot => (need + ((g.pot * 3) / 4).max(g.bb * 2)).min(p.stack),
         Action::RaisePot => (need + g.pot.max(g.bb * 3)).min(p.stack),
-        Action::RaiseOverbet125Pot => (need + ((g.pot * 5) / 4).max(g.bb * 2)).min(p.stack),
         Action::RaiseOverbet150Pot => (need + ((g.pot * 3) / 2).max(g.bb * 2)).min(p.stack),
-        Action::RaiseOverbet175Pot => (need + ((g.pot * 7) / 4).max(g.bb * 2)).min(p.stack),
         Action::RaiseOverbet200Pot => (need + (g.pot * 2).max(g.bb * 2)).min(p.stack),
     }
 }
 
-/// Display amount for the UI — for raises, shows just the pot-relative size
-/// (without the call portion) so labels like "Raise Pot $5" are intuitive.
+/// Display amount for the UI — for pot-relative raises, shows just the
+/// pot-relative size (without the call portion) so labels like "Raise Pot $5"
+/// are intuitive. Min Raise shows the full amount since it's not pot-relative.
 fn action_display_amount(g: &Game, a: Action) -> i32 {
     let u = user_index(g);
     let p = &g.players[u];
     match a {
-        Action::RaiseMin
-        | Action::RaiseHalfPot
+        Action::RaiseHalfPot
         | Action::RaiseThreeQuarterPot
         | Action::RaisePot
-        | Action::RaiseOverbet125Pot
         | Action::RaiseOverbet150Pot
-        | Action::RaiseOverbet175Pot
         | Action::RaiseOverbet200Pot => {
             let raise_extra = match a {
-                Action::RaiseMin => g.bb * 2,
                 Action::RaiseHalfPot => (g.pot / 2).max(g.bb * 2),
                 Action::RaiseThreeQuarterPot => ((g.pot * 3) / 4).max(g.bb * 2),
                 Action::RaisePot => g.pot.max(g.bb * 3),
-                Action::RaiseOverbet125Pot => ((g.pot * 5) / 4).max(g.bb * 2),
                 Action::RaiseOverbet150Pot => ((g.pot * 3) / 2).max(g.bb * 2),
-                Action::RaiseOverbet175Pot => ((g.pot * 7) / 4).max(g.bb * 2),
                 Action::RaiseOverbet200Pot => (g.pot * 2).max(g.bb * 2),
                 _ => 0,
             };
@@ -3317,17 +3271,13 @@ fn action_code_for(a: Action) -> u8 {
         Action::BetHalfPot => 4,
         Action::BetThreeQuarterPot => 5,
         Action::BetPot => 6,
-        Action::BetOverbet125Pot => 7,
         Action::BetOverbet150Pot => 8,
-        Action::BetOverbet175Pot => 15,
         Action::BetOverbet200Pot => 16,
         Action::RaiseMin => 9,
         Action::RaiseHalfPot => 10,
         Action::RaiseThreeQuarterPot => 11,
         Action::RaisePot => 12,
-        Action::RaiseOverbet125Pot => 13,
         Action::RaiseOverbet150Pot => 14,
-        Action::RaiseOverbet175Pot => 17,
         Action::RaiseOverbet200Pot => 18,
     }
 }
@@ -3341,17 +3291,13 @@ fn action_label(a: Action) -> &'static str {
         Action::BetHalfPot => "bet_half_pot",
         Action::BetThreeQuarterPot => "bet_three_quarter_pot",
         Action::BetPot => "bet_pot",
-        Action::BetOverbet125Pot => "bet_overbet_125_pot",
         Action::BetOverbet150Pot => "bet_overbet_150_pot",
-        Action::BetOverbet175Pot => "bet_overbet_175_pot",
         Action::BetOverbet200Pot => "bet_overbet_200_pot",
         Action::RaiseMin => "raise_min",
         Action::RaiseHalfPot => "raise_half_pot",
         Action::RaiseThreeQuarterPot => "raise_three_quarter_pot",
         Action::RaisePot => "raise_pot",
-        Action::RaiseOverbet125Pot => "raise_overbet_125_pot",
         Action::RaiseOverbet150Pot => "raise_overbet_150_pot",
-        Action::RaiseOverbet175Pot => "raise_overbet_175_pot",
         Action::RaiseOverbet200Pot => "raise_overbet_200_pot",
     }
 }
@@ -3684,17 +3630,13 @@ fn apply_user_action_code(g: &mut Game, action_code: u8) {
         4 => Action::BetHalfPot,
         5 => Action::BetThreeQuarterPot,
         6 => Action::BetPot,
-        7 => Action::BetOverbet125Pot,
         8 => Action::BetOverbet150Pot,
         9 => Action::RaiseMin,
         10 => Action::RaiseHalfPot,
         11 => Action::RaiseThreeQuarterPot,
         12 => Action::RaisePot,
-        13 => Action::RaiseOverbet125Pot,
         14 => Action::RaiseOverbet150Pot,
-        15 => Action::BetOverbet175Pot,
         16 => Action::BetOverbet200Pot,
-        17 => Action::RaiseOverbet175Pot,
         18 => Action::RaiseOverbet200Pot,
         _ => Action::CheckCall,
     };
@@ -4302,9 +4244,7 @@ mod tests {
         g.pot = 120;
 
         let acts = legal_actions(g);
-        assert!(acts.contains(&Action::BetOverbet125Pot));
         assert!(acts.contains(&Action::BetOverbet150Pot));
-        assert!(acts.contains(&Action::BetOverbet175Pot));
         assert!(acts.contains(&Action::BetOverbet200Pot));
 
         pc_free_game(ptr);
@@ -4331,9 +4271,7 @@ mod tests {
         g.pot = 240;
 
         let acts = legal_actions(g);
-        assert!(acts.contains(&Action::RaiseOverbet125Pot));
         assert!(acts.contains(&Action::RaiseOverbet150Pot));
-        assert!(acts.contains(&Action::RaiseOverbet175Pot));
         assert!(acts.contains(&Action::RaiseOverbet200Pot));
 
         pc_free_game(ptr);
@@ -4360,7 +4298,6 @@ mod tests {
         g.street_bet_done = false;
         g.raises_this_street = 0;
         let unopened = legal_actions(g);
-        assert!(!unopened.contains(&Action::BetOverbet175Pot));
         assert!(!unopened.contains(&Action::BetOverbet200Pot));
 
         g.players[u].committed_street = 20;
@@ -4368,7 +4305,6 @@ mod tests {
         g.street_bet_done = true;
         g.raises_this_street = 0;
         let facing_bet = legal_actions(g);
-        assert!(!facing_bet.contains(&Action::RaiseOverbet175Pot));
         assert!(!facing_bet.contains(&Action::RaiseOverbet200Pot));
 
         pc_free_game(ptr);

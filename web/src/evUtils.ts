@@ -9,27 +9,19 @@ export const ACTION_DISPLAY: Record<string, string> = {
   bet_half_pot: 'Bet 1/2',
   bet_three_quarter_pot: 'Bet 3/4',
   bet_pot: 'Bet Pot',
-  bet_overbet_125_pot: 'Bet 1.25x',
   bet_overbet_150_pot: 'Bet 1.5x',
-  bet_overbet_175_pot: 'Bet 1.75x',
   bet_overbet_200_pot: 'Bet 2x',
   raise_half_pot: 'Raise 1/2',
   raise_three_quarter_pot: 'Raise 3/4',
   raise_pot: 'Raise Pot',
-  raise_overbet_125_pot: 'Raise 1.25x',
   raise_overbet_150_pot: 'Raise 1.5x',
-  raise_overbet_175_pot: 'Raise 1.75x',
   raise_overbet_200_pot: 'Raise 2x',
 }
 
 export const OVERSIZED_ACTIONS = new Set([
-  'bet_overbet_125_pot',
   'bet_overbet_150_pot',
-  'bet_overbet_175_pot',
   'bet_overbet_200_pot',
-  'raise_overbet_125_pot',
   'raise_overbet_150_pot',
-  'raise_overbet_175_pot',
   'raise_overbet_200_pot',
 ])
 
