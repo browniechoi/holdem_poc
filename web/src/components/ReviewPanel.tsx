@@ -1,76 +1,74 @@
 import type { ActionEV } from '../types'
+import {
+  ACTION_DISPLAY,
+  OVERSIZED_ACTIONS,
+  fmtMaybe,
+  primaryEv,
+  primaryConfidence,
+  primaryStderr,
+  primaryIsBest,
+  primaryIsClearBest,
+  isNearOptimal,
+  dedup,
+} from '../evUtils'
 
 interface Props {
   chosenCode: number
   actions: ActionEV[]
+  street: string
   onContinue: () => void
   onUndo?: () => void
   onSkip?: () => void
 }
 
-const ACTION_DISPLAY: Record<string, string> = {
-  fold: 'Fold',
-  'check/call': 'Check / Call',
-  raise_min: 'Min Raise',
-  bet_quarter_pot: 'Bet 1/4',
-  bet_third_pot: 'Bet 1/3',
-  bet_half_pot: 'Bet 1/2',
-  bet_three_quarter_pot: 'Bet 3/4',
-  bet_pot: 'Bet Pot',
-  bet_overbet_125_pot: 'Bet 1.25x',
-  bet_overbet_150_pot: 'Bet 1.5x',
-  bet_overbet_175_pot: 'Bet 1.75x',
-  bet_overbet_200_pot: 'Bet 2x',
-  raise_half_pot: 'Raise 1/2',
-  raise_three_quarter_pot: 'Raise 3/4',
-  raise_pot: 'Raise Pot',
-  raise_overbet_125_pot: 'Raise 1.25x',
-  raise_overbet_150_pot: 'Raise 1.5x',
-  raise_overbet_175_pot: 'Raise 1.75x',
-  raise_overbet_200_pot: 'Raise 2x',
-}
-
-function fmt(ev: number) {
-  const abs = Math.abs(ev).toFixed(1)
-  return ev >= 0 ? `+${abs}` : `−${abs}`
-}
-
-function isNearOptimal(chosen: ActionEV, allActions: ActionEV[]): boolean {
-  const bestEV = Math.max(...allActions.map(a => a.ev))
-  const tolerance = Math.max(Math.abs(bestEV) * 0.05, 2.0)
-  return chosen.ev >= bestEV - tolerance
-}
-
-function dedup(actions: ActionEV[]): ActionEV[] {
-  const seen = new Set<number>()
-  return actions.filter(a => {
-    if (a.action === 'fold' || a.action === 'check/call') return true
-    if (a.amount <= 0) return true
-    if (seen.has(a.amount)) return false
-    seen.add(a.amount)
-    return true
-  })
-}
-
-export function ReviewPanel({ chosenCode, actions, onContinue, onUndo, onSkip }: Props) {
+export function ReviewPanel({ chosenCode, actions, street, onContinue, onUndo, onSkip }: Props) {
   const visible = dedup(actions)
+  const isPreflop = street === 'preflop'
   const chosen = visible.find(a => a.action_code === chosenCode)
     ?? actions.find(a => a.action_code === chosenCode)
-  const best = visible.find(a => a.is_best) ?? actions.find(a => a.is_best)
-  const nearOpt = chosen ? isNearOptimal(chosen, actions) : false
+  const best = visible.find(a => primaryIsBest(a, isPreflop)) ?? actions.find(a => primaryIsBest(a, isPreflop))
+  const poolBest = !isPreflop ? visible.find(a => a.is_best) ?? actions.find(a => a.is_best) : undefined
+  const bestConfidence = best ? primaryConfidence(best, isPreflop) : 'low'
+  const bestStderr = best ? primaryStderr(best, isPreflop) : null
+  const bestIsClear = best ? primaryIsClearBest(best, isPreflop) : false
+  const preflopGradeable = isPreflop && !!bestIsClear
+  const nearOpt = preflopGradeable && chosen ? isNearOptimal(chosen, actions) : false
   const chosenLabel = chosen
     ? (ACTION_DISPLAY[chosen.action] ?? chosen.action) +
       (chosen.amount > 0 && chosen.action !== 'fold' ? ` $${chosen.amount}` : '')
     : '—'
+  const downgradeOversizedPoolWinner = !isPreflop
+    && !!best
+    && !!poolBest
+    && poolBest.action_code !== best.action_code
+    && OVERSIZED_ACTIONS.has(poolBest.action)
+    && bestConfidence === 'low'
 
   return (
     <div className="review-panel">
       <div className="review-header">
         <span className="review-label">You chose:</span>
         <span className="review-chosen">{chosenLabel}</span>
-        <span className={`review-optimal ${nearOpt ? 'yes' : 'no'}`}>
-          {nearOpt ? '✓ Near-optimal' : '✗ Suboptimal'}
-        </span>
+        {preflopGradeable ? (
+          <span className={`review-optimal ${nearOpt ? 'yes' : 'no'}`}>
+            {nearOpt ? '✓ Near-optimal' : '✗ Suboptimal'}
+          </span>
+        ) : isPreflop && best ? (
+          <span className="review-note">
+            Preflop estimate: {bestConfidence}-confidence
+            {bestIsClear ? '' : ' · directional only'}
+          </span>
+        ) : best ? (
+          <span className="review-note">
+            Postflop reference estimate: {bestConfidence}-confidence
+            {bestIsClear ? '' : ' · directional only'}
+            {downgradeOversizedPoolWinner ? ' · oversized pool winners downgraded' : ''}
+          </span>
+        ) : (
+          <span className="review-note">
+            EV unavailable.
+          </span>
+        )}
       </div>
 
       <div className="action-buttons">
@@ -78,23 +76,24 @@ export function ReviewPanel({ chosenCode, actions, onContinue, onUndo, onSkip }:
           const label = ACTION_DISPLAY[a.action] ?? a.action
           const amtLabel = a.amount > 0 && a.action !== 'fold' ? ` $${a.amount}` : ''
           const isChosen = a.action_code === chosenCode
-          const evPositive = a.ev >= 0
+          const shownEv = primaryEv(a, isPreflop)
+          const evPositive = shownEv >= 0
 
           return (
             <div
               key={a.action_code}
               className={[
                 'action-btn',
-                a.is_best ? 'action-btn--best' : '',
+                primaryIsBest(a, isPreflop) && primaryIsClearBest(a, isPreflop) ? 'action-btn--best' : '',
                 a.action === 'fold' ? 'action-btn--fold' : '',
                 isChosen ? 'action-btn--chosen' : '',
               ].filter(Boolean).join(' ')}
             >
               <span className="action-btn-label">{label}{amtLabel}</span>
               <span className={`action-btn-ev ${evPositive ? 'ev-pos' : 'ev-neg'}`}>
-                {fmt(a.ev)}
+                {fmtMaybe(shownEv)}
               </span>
-              {a.is_best && <span className="action-btn-star">★</span>}
+              {primaryIsBest(a, isPreflop) && primaryIsClearBest(a, isPreflop) && <span className="action-btn-star">★</span>}
             </div>
           )
         })}
@@ -102,6 +101,10 @@ export function ReviewPanel({ chosenCode, actions, onContinue, onUndo, onSkip }:
 
       {best && (
         <div className="action-why">
+          <span className="why-pill">Confidence {bestConfidence}</span>
+          {bestStderr !== null && <span className="why-pill">SE ±{bestStderr.toFixed(1)}</span>}
+          {!isPreflop && <span className="why-pill">Postflop primary: Reference EV</span>}
+          {downgradeOversizedPoolWinner && <span className="why-pill">Oversized pool exploit downgraded</span>}
           {best.why.hand_class && <span className="why-pill">{best.why.hand_class}</span>}
           {best.why.board_texture && <span className="why-pill">{best.why.board_texture}</span>}
           {best.why.made_hand_now && <span className="why-pill">{best.why.made_hand_now}</span>}
@@ -118,18 +121,32 @@ export function ReviewPanel({ chosenCode, actions, onContinue, onUndo, onSkip }:
       )}
 
       {chosen && (() => {
-        const gap = chosen.ev - chosen.baseline_ev
-        const significant = Math.abs(gap) >= 2.0
+        const chosenEV = typeof chosen.ev === 'number' && Number.isFinite(chosen.ev) ? chosen.ev : null
+        const baselineEV = typeof chosen.baseline_ev === 'number' && Number.isFinite(chosen.baseline_ev) ? chosen.baseline_ev : null
+        const gap = chosenEV !== null && baselineEV !== null ? chosenEV - baselineEV : null
+        const significant = gap !== null && Math.abs(gap) >= 2.0
+        const primaryLabel = isPreflop ? 'EV' : 'Reference estimate'
+        const secondaryLabel = isPreflop ? 'Reference estimate' : 'Pool estimate'
         return (
           <div className="ev-compare">
-            <strong>Pool EV:</strong> {chosen.ev >= 0 ? '+' : ''}{chosen.ev.toFixed(1)}
-            {' '}·{' '}
-            <strong>Baseline (random opps):</strong> {chosen.baseline_ev >= 0 ? '+' : ''}{chosen.baseline_ev.toFixed(1)}
-            {significant && (
+            {isPreflop ? (
+              <>
+                <strong>{primaryLabel}:</strong> {chosenEV !== null ? `${chosenEV >= 0 ? '+' : ''}${chosenEV.toFixed(1)}` : '—'}
+                {' '}·{' '}
+                <strong>{secondaryLabel}:</strong> {baselineEV !== null ? `${baselineEV >= 0 ? '+' : ''}${baselineEV.toFixed(1)}` : '—'}
+              </>
+            ) : (
+              <>
+                <strong>{primaryLabel}:</strong> {baselineEV !== null ? `${baselineEV >= 0 ? '+' : ''}${baselineEV.toFixed(1)}` : '—'}
+                {' '}·{' '}
+                <strong>{secondaryLabel}:</strong> {chosenEV !== null ? `${chosenEV >= 0 ? '+' : ''}${chosenEV.toFixed(1)}` : '—'}
+              </>
+            )}
+            {significant && gap !== null && (
               <span className="ev-gap-warning">
                 {' '}— {gap > 0
                   ? `these bots call too much (+${gap.toFixed(1)} to exploit)`
-                  : `these bots play tighter (${gap.toFixed(1)} vs neutral)`}
+                  : `these bots play tighter (${gap.toFixed(1)} vs reference)`}
               </span>
             )}
           </div>

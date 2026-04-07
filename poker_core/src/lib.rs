@@ -239,9 +239,118 @@ struct ActionEV {
     amount: i32,
     ev: f64,
     baseline_ev: f64,
+    ev_stderr: f64,
+    best_confidence: String,
+    is_clear_best: bool,
     is_best: bool,
+    baseline_ev_stderr: f64,
+    baseline_best_confidence: String,
+    baseline_is_clear_best: bool,
+    baseline_is_best: bool,
     reason: String,
     why: WhyMetrics,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum BaselineStreetBucket {
+    Preflop,
+    Flop,
+    Turn,
+    River,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum PlayersBucket {
+    HeadsUp,
+    Multiway,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum PositionBucket {
+    InPosition,
+    OutOfPosition,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum FacingBucket {
+    Unopened,
+    FacingSmall,
+    FacingMedium,
+    FacingLarge,
+    FacingRaise,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum SprBand {
+    Low,
+    Mid,
+    High,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum BoardPairingBucket {
+    Unpaired,
+    Paired,
+    TripsBoard,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum BoardSuitBucket {
+    Rainbow,
+    TwoTone,
+    Monotone,
+    FourFlush,
+    FiveFlush,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum StrengthBucket {
+    Premium,
+    Strong,
+    Medium,
+    Weak,
+    Air,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum DrawClass {
+    None,
+    StraightDraw,
+    FlushDraw,
+    ComboDraw,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum BaselineActionFamily {
+    Fold,
+    CheckCall,
+    SmallAggro,
+    MediumAggro,
+    LargeAggro,
+    Jam,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct BaselineNodeBucketV1 {
+    street: BaselineStreetBucket,
+    players: PlayersBucket,
+    position: PositionBucket,
+    facing: FacingBucket,
+    spr_band: SprBand,
+    board_pairing: BoardPairingBucket,
+    board_suit: BoardSuitBucket,
+    strength: StrengthBucket,
+    draw_class: DrawClass,
+}
+
+#[derive(Clone, Copy, Debug, Default)]
+struct BaselineFamilyWeights {
+    fold: f64,
+    check_call: f64,
+    small_aggro: f64,
+    medium_aggro: f64,
+    large_aggro: f64,
+    jam: f64,
 }
 
 fn street_name(s: Street) -> &'static str {
@@ -1383,66 +1492,254 @@ fn board_draw_pressure(board: &[Card]) -> f64 {
     score
 }
 
+fn strength_bucket_signal(strength: StrengthBucket) -> f64 {
+    match strength {
+        StrengthBucket::Premium => 0.94,
+        StrengthBucket::Strong => 0.76,
+        StrengthBucket::Medium => 0.52,
+        StrengthBucket::Weak => 0.28,
+        StrengthBucket::Air => 0.08,
+    }
+}
+
+fn draw_class_bonus(draw: DrawClass) -> f64 {
+    match draw {
+        DrawClass::None => 0.0,
+        DrawClass::StraightDraw => 0.08,
+        DrawClass::FlushDraw => 0.10,
+        DrawClass::ComboDraw => 0.18,
+    }
+}
+
+fn aggressive_action_for_signal(signal: f64, facing_bet: bool, allow_high_overbet: bool) -> Action {
+    if facing_bet {
+        if allow_high_overbet && signal > 0.96 {
+            Action::RaiseOverbet200Pot
+        } else if allow_high_overbet && signal > 0.89 {
+            Action::RaiseOverbet175Pot
+        } else if signal > 0.83 {
+            Action::RaiseOverbet150Pot
+        } else if signal > 0.76 {
+            Action::RaiseOverbet125Pot
+        } else if signal > 0.67 {
+            Action::RaisePot
+        } else if signal > 0.58 {
+            Action::RaiseThreeQuarterPot
+        } else if signal > 0.51 {
+            Action::RaiseHalfPot
+        } else {
+            Action::RaiseMin
+        }
+    } else if allow_high_overbet && signal > 0.96 {
+        Action::BetOverbet200Pot
+    } else if allow_high_overbet && signal > 0.89 {
+        Action::BetOverbet175Pot
+    } else if signal > 0.83 {
+        Action::BetOverbet150Pot
+    } else if signal > 0.75 {
+        Action::BetOverbet125Pot
+    } else if signal > 0.66 {
+        Action::BetPot
+    } else if signal > 0.56 {
+        Action::BetThreeQuarterPot
+    } else if signal > 0.45 {
+        Action::BetHalfPot
+    } else {
+        Action::BetThirdPot
+    }
+}
+
+fn postflop_hand_signal(g: &Game, idx: usize) -> (StrengthBucket, DrawClass, f64) {
+    let strength = actor_postflop_strength_bucket(g, idx);
+    let draw = actor_draw_class(g, idx);
+    let mut signal =
+        strength_bucket_signal(strength) + draw_class_bonus(draw) - board_draw_pressure(&g.board) * 0.18;
+    signal = signal.clamp(0.0, 1.15);
+    (strength, draw, signal)
+}
+
+fn multiway_postflop_penalty(g: &Game) -> f64 {
+    let extra_players = active_count(g).saturating_sub(2) as f64;
+    extra_players * 0.10
+}
+
+fn facing_overbet_pressure(g: &Game, idx: usize) -> f64 {
+    let need = to_call_for(g, idx) as f64;
+    let pot = g.pot.max(1) as f64;
+    if need >= pot * 1.25 {
+        0.18
+    } else if need >= pot {
+        0.12
+    } else if need >= pot * 0.75 {
+        0.06
+    } else {
+        0.0
+    }
+}
+
 fn bot_choose(g: &Game, idx: usize) -> Action {
     let p = &g.players[idx];
     let s = p.style;
-    let base = (preflop_score(p.hole) - board_draw_pressure(&g.board)).max(0.0);
 
     let allow_high_overbet = allow_high_overbet_on_street(g.street);
-    if g.bet_to_call == 0 {
-        // bet or check
-        let bet_bias = base - 0.45 + s.aggro * 0.15 + s.skill * 0.1;
-        if bet_bias > 0.15 && !g.street_bet_done {
-            if allow_high_overbet && bet_bias > 0.84 {
-                Action::BetOverbet200Pot
-            } else if allow_high_overbet && bet_bias > 0.76 {
-                Action::BetOverbet175Pot
-            } else if bet_bias > 0.70 {
-                Action::BetOverbet150Pot
-            } else if bet_bias > 0.62 {
-                Action::BetOverbet125Pot
-            } else if bet_bias > 0.55 {
-                Action::BetPot
-            } else if bet_bias > 0.43 {
-                Action::BetThreeQuarterPot
-            } else if bet_bias > 0.32 {
-                Action::BetHalfPot
+    if g.street == Street::Preflop {
+        let base = (preflop_score(p.hole) - board_draw_pressure(&g.board)).max(0.0);
+        if g.bet_to_call == 0 {
+            // bet or check
+            let bet_bias = base - 0.45 + s.aggro * 0.15 + s.skill * 0.1;
+            if bet_bias > 0.15 && !g.street_bet_done {
+                aggressive_action_for_signal(bet_bias, false, allow_high_overbet)
             } else {
-                Action::BetThirdPot
+                Action::CheckCall
             }
         } else {
+            // call / fold / (sometimes) raise
+            let need = (g.bet_to_call - g.players[idx].committed_street).max(0);
+            let raise_gate = g.raises_this_street < 2
+                && g.players[idx].stack > need + g.bb * 2;
+            let mut call_bias =
+                base - (0.35 + s.tight * 0.12) + s.calliness * 0.1 + s.skill * 0.08;
+            let mut raise_threshold = 0.42;
+            let (call_adj, raise_adj) = exploit_adjustment_vs_user_tell(g);
+            call_bias += call_adj;
+            raise_threshold += raise_adj;
+
+            if raise_gate && call_bias > raise_threshold && s.aggro > 0.45 {
+                aggressive_action_for_signal(call_bias, true, allow_high_overbet)
+            } else if call_bias > 0.0 {
+                Action::CheckCall
+            } else {
+                Action::Fold
+            }
+        }
+    } else if g.bet_to_call == 0 {
+        let (strength, draw, signal) = postflop_hand_signal(g, idx);
+        let multiway_penalty = multiway_postflop_penalty(g);
+        let position_bonus = if position_bucket_for(g, idx) == PositionBucket::InPosition {
+            0.04
+        } else {
+            -0.02
+        };
+        let aggression_bias = signal
+            - 0.42
+            + s.aggro * 0.16
+            + s.skill * 0.08
+            + position_bonus
+            - multiway_penalty
+            - if matches!(strength, StrengthBucket::Air) && matches!(draw, DrawClass::None) {
+                multiway_penalty * 0.8
+            } else {
+                0.0
+            };
+        if g.street_bet_done || aggression_bias <= 0.0 {
+            return Action::CheckCall;
+        }
+
+        let size_signal = signal
+            - multiway_penalty
+            + match draw {
+                DrawClass::ComboDraw => 0.08,
+                DrawClass::StraightDraw | DrawClass::FlushDraw => 0.03,
+                DrawClass::None => 0.0,
+            }
+            + match strength {
+                StrengthBucket::Premium => 0.08,
+                StrengthBucket::Strong => 0.04,
+                StrengthBucket::Medium => 0.0,
+                StrengthBucket::Weak => -0.04,
+                StrengthBucket::Air => -0.08,
+            };
+
+        if matches!(strength, StrengthBucket::Air) && matches!(draw, DrawClass::None) && aggression_bias < 0.14
+        {
             Action::CheckCall
+        } else {
+            aggressive_action_for_signal(size_signal.clamp(0.0, 1.15), false, allow_high_overbet)
         }
     } else {
-        // call / fold / (sometimes) raise
-        let need = (g.bet_to_call - g.players[idx].committed_street).max(0);
-        let raise_gate = g.raises_this_street < 2
-            && g.players[idx].stack > need + g.bb * 2;
-        let mut call_bias = base - (0.35 + s.tight * 0.12) + s.calliness * 0.1 + s.skill * 0.08;
-        let mut raise_threshold = 0.42;
+        let need = to_call_for(g, idx);
+        let raise_gate = g.raises_this_street < 2 && g.players[idx].stack > need + g.bb * 2;
+        let (strength, draw, signal) = postflop_hand_signal(g, idx);
+        let facing = facing_bucket_for(g, idx);
+        let pot_after_call = (g.pot + need).max(1) as f64;
+        let price = need as f64 / pot_after_call;
+        let multiway_penalty = multiway_postflop_penalty(g);
+        let overbet_penalty = facing_overbet_pressure(g, idx);
         let (call_adj, raise_adj) = exploit_adjustment_vs_user_tell(g);
-        call_bias += call_adj;
-        raise_threshold += raise_adj;
 
-        if raise_gate && call_bias > raise_threshold && s.aggro > 0.45 {
-            if allow_high_overbet && call_bias > 0.90 {
-                Action::RaiseOverbet200Pot
-            } else if allow_high_overbet && call_bias > 0.84 {
-                Action::RaiseOverbet175Pot
-            } else if call_bias > 0.80 {
-                Action::RaiseOverbet150Pot
-            } else if call_bias > 0.73 {
-                Action::RaiseOverbet125Pot
-            } else if call_bias > 0.68 {
-                Action::RaisePot
-            } else if call_bias > 0.59 {
-                Action::RaiseThreeQuarterPot
-            } else if call_bias > 0.55 {
-                Action::RaiseHalfPot
-            } else {
-                Action::RaiseMin
+        let continue_score = signal
+            - price * 0.95
+            + s.calliness * 0.12
+            + s.skill * 0.08
+            + call_adj
+            - multiway_penalty * 0.7
+            - overbet_penalty
+            + match draw {
+                DrawClass::ComboDraw => 0.08,
+                DrawClass::StraightDraw | DrawClass::FlushDraw => 0.04,
+                DrawClass::None => 0.0,
             }
-        } else if call_bias > 0.0 {
+            + match strength {
+                StrengthBucket::Premium => 0.10,
+                StrengthBucket::Strong => 0.05,
+                StrengthBucket::Medium => 0.0,
+                StrengthBucket::Weak => -0.08,
+                StrengthBucket::Air => -0.14,
+            };
+
+        let raise_score = signal
+            - 0.56
+            + s.aggro * 0.16
+            + raise_adj
+            - multiway_penalty * 1.25
+            - overbet_penalty * 1.4
+            + match draw {
+                DrawClass::ComboDraw => 0.08,
+                DrawClass::StraightDraw | DrawClass::FlushDraw => 0.03,
+                DrawClass::None => 0.0,
+            }
+            + match strength {
+                StrengthBucket::Premium => 0.18,
+                StrengthBucket::Strong => 0.09,
+                StrengthBucket::Medium => 0.0,
+                StrengthBucket::Weak => -0.05,
+                StrengthBucket::Air => -0.10,
+            }
+            - match facing {
+                FacingBucket::FacingSmall => -0.02,
+                FacingBucket::FacingMedium => 0.02,
+                FacingBucket::FacingLarge => 0.08,
+                FacingBucket::FacingRaise => 0.12,
+                FacingBucket::Unopened => 0.0,
+            };
+
+        let continue_threshold = match facing {
+            FacingBucket::FacingSmall => -0.05,
+            FacingBucket::FacingMedium => 0.0,
+            FacingBucket::FacingLarge => 0.08,
+            FacingBucket::FacingRaise => 0.12,
+            FacingBucket::Unopened => -0.10,
+        } + multiway_penalty * 0.45 + overbet_penalty * 0.8;
+
+        if matches!(strength, StrengthBucket::Air | StrengthBucket::Weak)
+            && matches!(draw, DrawClass::None)
+            && (matches!(facing, FacingBucket::FacingLarge | FacingBucket::FacingRaise) || overbet_penalty > 0.0)
+            && continue_score < continue_threshold + 0.18
+        {
+            return Action::Fold;
+        }
+
+        if raise_gate
+            && raise_score > 0.0
+            && continue_score > continue_threshold
+            && (matches!(strength, StrengthBucket::Premium | StrengthBucket::Strong)
+                || matches!(draw, DrawClass::ComboDraw))
+        {
+            let size_signal = signal
+                + if spr_band_for(g, idx) == SprBand::Low { 0.08 } else { 0.0 }
+                + if matches!(draw, DrawClass::ComboDraw) { 0.05 } else { 0.0 };
+            aggressive_action_for_signal(size_signal.clamp(0.0, 1.15), true, allow_high_overbet)
+        } else if continue_score > continue_threshold {
             Action::CheckCall
         } else {
             Action::Fold
@@ -1451,7 +1748,7 @@ fn bot_choose(g: &Game, idx: usize) -> Action {
 }
 
 // --- Monte Carlo EV for user action ---
-fn simulate_once(mut g: Game) -> i32 {
+fn simulate_once(mut g: Game, rng: &mut StdRng) -> i32 {
     let u = user_index(&g);
     let start_stack = g.players[u].stack;
 
@@ -1474,8 +1771,7 @@ fn simulate_once(mut g: Game) -> i32 {
         }
 
         let a = if g.players[idx].is_user {
-            // should not happen inside sim if we step correctly
-            Action::CheckCall
+            baseline_choose_v1(&g, rng)
         } else {
             bot_choose(&g, idx)
         };
@@ -1493,8 +1789,8 @@ fn simulate_once(mut g: Game) -> i32 {
     end_stack - start_stack
 }
 
-// Baseline opponent model: fold/call/raise with fixed probabilities (independent of style).
-// Used to compute a "neutral" EV unaffected by specific bot personalities at the table.
+// Legacy neutral fallback for unsupported baseline_v1 states.
+// Kept as a fallback so the reference rollout remains defined even when a bucket is missing.
 fn bot_choose_random(g: &Game, rng: &mut StdRng) -> Action {
     let r: f64 = rng.gen();
     if g.bet_to_call > 0 {
@@ -1517,7 +1813,8 @@ fn bot_choose_random(g: &Game, rng: &mut StdRng) -> Action {
     }
 }
 
-// Like simulate_action_on_world but with random opponents instead of styled bots.
+// Like simulate_action_on_world but with the frozen baseline_v1 reference policy
+// instead of live bot personalities.
 fn simulate_action_baseline(g: &Game, user_action: Action, world_seed: u64) -> i32 {
     let u = user_index(g);
     // XOR with a distinct constant so baseline and pool sims diverge even with the same seed.
@@ -1555,11 +1852,7 @@ fn simulate_action_baseline(g: &Game, user_action: Action, world_seed: u64) -> i
             }
             break;
         }
-        let a = if g2.players[idx].is_user {
-            Action::CheckCall
-        } else {
-            bot_choose_random(&g2, &mut rng)
-        };
+        let a = baseline_choose_v1(&g2, &mut rng);
         apply_action(&mut g2, idx, a);
         if g2.hand_over {
             break;
@@ -1584,6 +1877,7 @@ fn card_id(c: Card) -> u64 {
 }
 
 fn state_seed(g: &Game) -> u64 {
+    let user_idx = user_index(g);
     let mut seed = 0x9e3779b97f4a7c15u64;
     seed ^= mix_u64(g.pot as u64);
     seed ^= mix_u64(g.bet_to_call as u64);
@@ -1608,8 +1902,12 @@ fn state_seed(g: &Game) -> u64 {
         if p.in_hand {
             seed ^= mix_u64(0xabc0_0000_0000_0000u64 | i as u64);
         }
-        seed ^= mix_u64(card_id(p.hole[0]).wrapping_add((i as u64) << 5));
-        seed ^= mix_u64(card_id(p.hole[1]).wrapping_add((i as u64) << 9));
+        // Rollout worlds must depend only on public state plus the user's visible hand.
+        // Hidden opponent cards are resampled later and must not influence the sampled worlds.
+        if i == user_idx {
+            seed ^= mix_u64(card_id(p.hole[0]).wrapping_add((i as u64) << 5));
+            seed ^= mix_u64(card_id(p.hole[1]).wrapping_add((i as u64) << 9));
+        }
     }
     mix_u64(seed)
 }
@@ -1672,7 +1970,7 @@ fn simulate_action_on_world(g: &Game, user_action: Action, world_seed: u64) -> i
     }
 
     // finish sim
-    let future_delta = simulate_once(g2);
+    let future_delta = simulate_once(g2, &mut rng);
     settled_stack - pre_action_stack + future_delta
 }
 
@@ -1709,6 +2007,33 @@ fn adaptive_should_escalate(g: &Game, stage_iters: usize, best_gap: f64) -> bool
         200 => best_gap < (pot_scale * 0.08).max(10.0),
         800 => best_gap < (pot_scale * 0.04).max(5.0),
         _ => false,
+    }
+}
+
+fn ev_standard_error(sum: i64, sum_sq: f64, n: usize) -> f64 {
+    if n <= 1 {
+        return 0.0;
+    }
+    let n_f = n as f64;
+    let mean = sum as f64 / n_f;
+    let variance = (sum_sq / n_f) - mean * mean;
+    (variance.max(0.0) / n_f).sqrt()
+}
+
+fn best_confidence_for_gap(g: &Game, best_gap: f64, best_stderr: f64, second_stderr: f64) -> (&'static str, bool) {
+    let combined_stderr = (best_stderr.powi(2) + second_stderr.powi(2)).sqrt();
+    let gap_floor = if g.street == Street::Preflop {
+        2.0
+    } else {
+        (g.pot.max(g.bb * 2) as f64 * 0.03).max(4.0)
+    };
+
+    if best_gap >= gap_floor.max(combined_stderr * 2.5) {
+        ("high", true)
+    } else if best_gap >= (gap_floor * 0.5).max(combined_stderr * 1.5) {
+        ("medium", true)
+    } else {
+        ("low", false)
     }
 }
 
@@ -2177,6 +2502,655 @@ fn user_blocker_note(g: &Game) -> String {
     "No strong blocker effect in this node.".to_string()
 }
 
+fn to_call_for(g: &Game, idx: usize) -> i32 {
+    (g.bet_to_call - g.players[idx].committed_street).max(0)
+}
+
+fn betting_order_start(g: &Game) -> usize {
+    match g.street {
+        Street::Preflop => next_idx(g.players.len(), g.bb_idx),
+        _ => next_idx(g.players.len(), g.dealer),
+    }
+}
+
+fn acting_order(g: &Game) -> Vec<usize> {
+    let mut out = Vec::with_capacity(g.players.len());
+    let start = betting_order_start(g);
+    for step in 0..g.players.len() {
+        let idx = (start + step) % g.players.len();
+        if can_act(&g.players[idx]) {
+            out.push(idx);
+        }
+    }
+    out
+}
+
+fn position_bucket_for(g: &Game, idx: usize) -> PositionBucket {
+    let order = acting_order(g);
+    if order.last().copied() == Some(idx) {
+        PositionBucket::InPosition
+    } else {
+        PositionBucket::OutOfPosition
+    }
+}
+
+fn street_bucket_for(street: Street) -> Option<BaselineStreetBucket> {
+    match street {
+        Street::Preflop => Some(BaselineStreetBucket::Preflop),
+        Street::Flop => Some(BaselineStreetBucket::Flop),
+        Street::Turn => Some(BaselineStreetBucket::Turn),
+        Street::River => Some(BaselineStreetBucket::River),
+        Street::Showdown => None,
+    }
+}
+
+fn board_pairing_bucket(board: &[Card]) -> BoardPairingBucket {
+    let mut rank_counts = [0u8; 15];
+    for c in board {
+        rank_counts[c.rank as usize] += 1;
+    }
+    let max_count = rank_counts.iter().copied().max().unwrap_or(0);
+    if max_count >= 3 {
+        BoardPairingBucket::TripsBoard
+    } else if max_count >= 2 {
+        BoardPairingBucket::Paired
+    } else {
+        BoardPairingBucket::Unpaired
+    }
+}
+
+fn board_suit_bucket(board: &[Card]) -> BoardSuitBucket {
+    let mut suit_counts = [0u8; 4];
+    for c in board {
+        suit_counts[c.suit as usize] += 1;
+    }
+    match suit_counts.iter().copied().max().unwrap_or(0) {
+        5.. => BoardSuitBucket::FiveFlush,
+        4 => BoardSuitBucket::FourFlush,
+        3 => BoardSuitBucket::Monotone,
+        2 => BoardSuitBucket::TwoTone,
+        _ => BoardSuitBucket::Rainbow,
+    }
+}
+
+fn actor_known_cards(g: &Game, idx: usize) -> Vec<Card> {
+    let mut cards = Vec::with_capacity(g.board.len() + 2);
+    cards.extend_from_slice(&g.board);
+    cards.push(g.players[idx].hole[0]);
+    cards.push(g.players[idx].hole[1]);
+    cards
+}
+
+fn preflop_strength_bucket(hole: [Card; 2]) -> StrengthBucket {
+    let hi = hole[0].rank.max(hole[1].rank);
+    let lo = hole[0].rank.min(hole[1].rank);
+    let suited = hole[0].suit == hole[1].suit;
+    let connected = hi.saturating_sub(lo) <= 2;
+
+    if hi == lo && hi >= 11 {
+        StrengthBucket::Premium
+    } else if hi == lo && hi >= 7 {
+        StrengthBucket::Strong
+    } else if hi == lo {
+        StrengthBucket::Medium
+    } else if (hi == 14 && lo >= 11) || (suited && hi >= 13 && lo >= 11) {
+        StrengthBucket::Premium
+    } else if hi >= 13 && lo >= 10 {
+        StrengthBucket::Strong
+    } else if suited && connected && hi >= 7 {
+        StrengthBucket::Medium
+    } else if suited && hi >= 11 {
+        StrengthBucket::Medium
+    } else if hi == 14 {
+        StrengthBucket::Weak
+    } else {
+        StrengthBucket::Air
+    }
+}
+
+fn actor_postflop_strength_bucket(g: &Game, idx: usize) -> StrengthBucket {
+    let cards = actor_known_cards(g, idx);
+    let cat = best_cat_from_known(&cards);
+    match cat {
+        6..=8 => StrengthBucket::Premium,
+        3..=5 => StrengthBucket::Strong,
+        2 => StrengthBucket::Strong,
+        1 => {
+            let hole = g.players[idx].hole;
+            let board_max = g.board.iter().map(|c| c.rank).max().unwrap_or(0);
+            let mut board_ranks: Vec<u8> = g.board.iter().map(|c| c.rank).collect();
+            board_ranks.sort_by(|a, b| b.cmp(a));
+            board_ranks.dedup();
+            let second_board = board_ranks.get(1).copied().unwrap_or(0);
+
+            if hole[0].rank == hole[1].rank {
+                if hole[0].rank > board_max {
+                    StrengthBucket::Strong
+                } else if hole[0].rank >= second_board {
+                    StrengthBucket::Medium
+                } else {
+                    StrengthBucket::Weak
+                }
+            } else {
+                let pair_rank = if board_ranks.contains(&hole[0].rank) {
+                    hole[0].rank
+                } else if board_ranks.contains(&hole[1].rank) {
+                    hole[1].rank
+                } else {
+                    0
+                };
+                if pair_rank >= board_max {
+                    StrengthBucket::Strong
+                } else if pair_rank >= second_board {
+                    StrengthBucket::Medium
+                } else {
+                    StrengthBucket::Weak
+                }
+            }
+        }
+        _ => {
+            let hole = g.players[idx].hole;
+            if hole[0].rank == 14 || hole[1].rank == 14 {
+                StrengthBucket::Weak
+            } else {
+                StrengthBucket::Air
+            }
+        }
+    }
+}
+
+fn actor_strength_bucket(g: &Game, idx: usize) -> StrengthBucket {
+    match g.street {
+        Street::Preflop => preflop_strength_bucket(g.players[idx].hole),
+        Street::Flop | Street::Turn | Street::River => actor_postflop_strength_bucket(g, idx),
+        Street::Showdown => StrengthBucket::Air,
+    }
+}
+
+fn actor_draw_class(g: &Game, idx: usize) -> DrawClass {
+    if g.street == Street::Preflop || g.board.len() >= 5 {
+        return DrawClass::None;
+    }
+
+    let cards = actor_known_cards(g, idx);
+    let mut suit_counts = [0u8; 4];
+    let mut ranks = HashSet::new();
+    for c in cards {
+        suit_counts[c.suit as usize] += 1;
+        ranks.insert(c.rank);
+        if c.rank == 14 {
+            ranks.insert(1);
+        }
+    }
+
+    let max_suited = suit_counts.iter().copied().max().unwrap_or(0);
+    let made_flush = max_suited >= 5;
+    let flush_draw = !made_flush && max_suited >= 4;
+    let made_straight = has_straight_from_ranks(&ranks);
+    let straight_draw = !made_straight && has_straight_draw_from_ranks(&ranks);
+
+    match (flush_draw, straight_draw) {
+        (true, true) => DrawClass::ComboDraw,
+        (true, false) => DrawClass::FlushDraw,
+        (false, true) => DrawClass::StraightDraw,
+        (false, false) => DrawClass::None,
+    }
+}
+
+fn facing_bucket_for(g: &Game, idx: usize) -> FacingBucket {
+    let to_call = to_call_for(g, idx);
+    if to_call <= 0 {
+        return FacingBucket::Unopened;
+    }
+    if g.raises_this_street >= 1 {
+        return FacingBucket::FacingRaise;
+    }
+
+    let denom = g.pot.max(g.bb).max(1) as f64;
+    let ratio = to_call as f64 / denom;
+    if ratio <= 0.33 {
+        FacingBucket::FacingSmall
+    } else if ratio <= 0.75 {
+        FacingBucket::FacingMedium
+    } else {
+        FacingBucket::FacingLarge
+    }
+}
+
+fn spr_band_for(g: &Game, idx: usize) -> SprBand {
+    let denom = g.pot.max(g.bb).max(1) as f64;
+    let spr = g.players[idx].stack as f64 / denom;
+    if spr <= 2.5 {
+        SprBand::Low
+    } else if spr <= 6.0 {
+        SprBand::Mid
+    } else {
+        SprBand::High
+    }
+}
+
+fn extract_baseline_bucket_v1(g: &Game, idx: usize) -> Option<BaselineNodeBucketV1> {
+    let street = street_bucket_for(g.street)?;
+    Some(BaselineNodeBucketV1 {
+        street,
+        players: if active_count(g) <= 2 {
+            PlayersBucket::HeadsUp
+        } else {
+            PlayersBucket::Multiway
+        },
+        position: position_bucket_for(g, idx),
+        facing: facing_bucket_for(g, idx),
+        spr_band: spr_band_for(g, idx),
+        board_pairing: board_pairing_bucket(&g.board),
+        board_suit: board_suit_bucket(&g.board),
+        strength: actor_strength_bucket(g, idx),
+        draw_class: actor_draw_class(g, idx),
+    })
+}
+
+fn weights(
+    fold: f64,
+    check_call: f64,
+    small_aggro: f64,
+    medium_aggro: f64,
+    large_aggro: f64,
+    jam: f64,
+) -> BaselineFamilyWeights {
+    BaselineFamilyWeights {
+        fold,
+        check_call,
+        small_aggro,
+        medium_aggro,
+        large_aggro,
+        jam,
+    }
+}
+
+fn clamp_nonnegative(x: f64) -> f64 {
+    if x.is_sign_negative() {
+        0.0
+    } else {
+        x
+    }
+}
+
+fn normalize_baseline_policy(mut w: BaselineFamilyWeights) -> Vec<(BaselineActionFamily, f64)> {
+    w.fold = clamp_nonnegative(w.fold);
+    w.check_call = clamp_nonnegative(w.check_call);
+    w.small_aggro = clamp_nonnegative(w.small_aggro);
+    w.medium_aggro = clamp_nonnegative(w.medium_aggro);
+    w.large_aggro = clamp_nonnegative(w.large_aggro);
+    w.jam = clamp_nonnegative(w.jam);
+
+    let total = w.fold + w.check_call + w.small_aggro + w.medium_aggro + w.large_aggro + w.jam;
+    if total <= 1e-9 {
+        return vec![(BaselineActionFamily::CheckCall, 1.0)];
+    }
+
+    vec![
+        (BaselineActionFamily::Fold, w.fold / total),
+        (BaselineActionFamily::CheckCall, w.check_call / total),
+        (BaselineActionFamily::SmallAggro, w.small_aggro / total),
+        (BaselineActionFamily::MediumAggro, w.medium_aggro / total),
+        (BaselineActionFamily::LargeAggro, w.large_aggro / total),
+        (BaselineActionFamily::Jam, w.jam / total),
+    ]
+    .into_iter()
+    .filter(|(_, weight)| *weight > 0.0)
+    .collect()
+}
+
+fn lookup_baseline_policy_v1(bucket: &BaselineNodeBucketV1) -> Vec<(BaselineActionFamily, f64)> {
+    let mut w = match bucket.facing {
+        FacingBucket::Unopened => weights(0.0, 0.54, 0.22, 0.16, 0.08, 0.0),
+        FacingBucket::FacingSmall => weights(0.18, 0.58, 0.09, 0.09, 0.05, 0.01),
+        FacingBucket::FacingMedium => weights(0.28, 0.53, 0.04, 0.08, 0.05, 0.02),
+        FacingBucket::FacingLarge => weights(0.40, 0.45, 0.02, 0.05, 0.05, 0.03),
+        FacingBucket::FacingRaise => weights(0.48, 0.38, 0.02, 0.05, 0.04, 0.03),
+    };
+
+    match bucket.players {
+        PlayersBucket::HeadsUp => {}
+        PlayersBucket::Multiway => {
+            w.fold += 0.14;
+            w.check_call += 0.07;
+            w.small_aggro -= 0.05;
+            w.medium_aggro -= 0.08;
+            w.large_aggro -= 0.05;
+            w.jam -= 0.03;
+        }
+    }
+
+    match bucket.position {
+        PositionBucket::InPosition => {
+            w.fold -= 0.04;
+            w.small_aggro += 0.03;
+            w.medium_aggro += 0.02;
+        }
+        PositionBucket::OutOfPosition => {
+            w.check_call += 0.03;
+            w.large_aggro -= 0.02;
+        }
+    }
+
+    match bucket.spr_band {
+        SprBand::Low => {
+            w.small_aggro -= 0.03;
+            w.medium_aggro += 0.03;
+            w.large_aggro += 0.04;
+            w.jam += 0.06;
+        }
+        SprBand::Mid => {}
+        SprBand::High => {
+            w.jam -= 0.03;
+            w.small_aggro += 0.02;
+            w.medium_aggro += 0.01;
+        }
+    }
+
+    match bucket.board_pairing {
+        BoardPairingBucket::Unpaired => {}
+        BoardPairingBucket::Paired | BoardPairingBucket::TripsBoard => {
+            w.check_call += 0.02;
+            w.small_aggro += 0.01;
+            w.large_aggro -= 0.03;
+            w.jam -= 0.01;
+        }
+    }
+
+    match bucket.board_suit {
+        BoardSuitBucket::Monotone | BoardSuitBucket::FourFlush | BoardSuitBucket::FiveFlush => {
+            w.fold += 0.02;
+            w.check_call += 0.02;
+            w.large_aggro -= 0.03;
+        }
+        _ => {}
+    }
+
+    if bucket.players == PlayersBucket::Multiway
+        && matches!(bucket.facing, FacingBucket::FacingLarge | FacingBucket::FacingRaise)
+    {
+        w.fold += 0.08;
+        w.check_call += 0.06;
+        w.medium_aggro -= 0.04;
+        w.large_aggro -= 0.08;
+        w.jam -= 0.05;
+    }
+
+    match bucket.strength {
+        StrengthBucket::Premium => {
+            w.fold -= 0.30;
+            w.check_call -= 0.05;
+            w.small_aggro -= 0.02;
+            w.medium_aggro += 0.12;
+            w.large_aggro += 0.14;
+            w.jam += 0.11;
+        }
+        StrengthBucket::Strong => {
+            w.fold -= 0.18;
+            w.check_call += 0.03;
+            w.small_aggro += 0.01;
+            w.medium_aggro += 0.08;
+            w.large_aggro += 0.06;
+        }
+        StrengthBucket::Medium => {
+            w.fold -= 0.06;
+            w.check_call += 0.08;
+            w.small_aggro += 0.04;
+            w.medium_aggro += 0.02;
+        }
+        StrengthBucket::Weak => {
+            w.fold += 0.08;
+            w.check_call += 0.02;
+            w.small_aggro -= 0.03;
+            w.medium_aggro -= 0.04;
+            w.large_aggro -= 0.02;
+            w.jam -= 0.01;
+        }
+        StrengthBucket::Air => {
+            if bucket.facing == FacingBucket::Unopened {
+                w.check_call += 0.04;
+                w.small_aggro += 0.05;
+                w.medium_aggro += 0.01;
+                w.large_aggro -= 0.04;
+                if bucket.players == PlayersBucket::Multiway {
+                    w.small_aggro -= 0.05;
+                    w.medium_aggro -= 0.03;
+                    w.check_call += 0.04;
+                }
+            } else {
+                w.fold += 0.18;
+                w.check_call -= 0.05;
+                if bucket.position == PositionBucket::InPosition
+                    && bucket.players == PlayersBucket::HeadsUp
+                    && bucket.facing != FacingBucket::FacingRaise
+                {
+                    w.small_aggro += 0.05;
+                }
+                w.medium_aggro -= 0.04;
+                w.large_aggro -= 0.08;
+                w.jam -= 0.06;
+            }
+        }
+    }
+
+    if bucket.strength == StrengthBucket::Weak
+        && matches!(bucket.facing, FacingBucket::FacingLarge | FacingBucket::FacingRaise)
+        && bucket.draw_class == DrawClass::None
+    {
+        w.fold += 0.10;
+        w.check_call += 0.02;
+        w.medium_aggro -= 0.04;
+        w.large_aggro -= 0.06;
+        w.jam -= 0.02;
+    }
+
+    match bucket.draw_class {
+        DrawClass::None => {}
+        DrawClass::StraightDraw | DrawClass::FlushDraw => {
+            w.fold -= 0.08;
+            w.check_call += 0.05;
+            w.medium_aggro += 0.03;
+            w.large_aggro += 0.01;
+        }
+        DrawClass::ComboDraw => {
+            w.fold -= 0.14;
+            w.check_call += 0.04;
+            w.medium_aggro += 0.05;
+            w.large_aggro += 0.05;
+            w.jam += 0.03;
+        }
+    }
+
+    if bucket.strength == StrengthBucket::Premium
+        && bucket.spr_band == SprBand::Low
+        && matches!(bucket.facing, FacingBucket::FacingLarge | FacingBucket::FacingRaise)
+    {
+        w.jam += 0.10;
+    }
+
+    if bucket.facing == FacingBucket::Unopened {
+        w.fold = 0.0;
+    }
+
+    normalize_baseline_policy(w)
+}
+
+fn is_aggressive_action(a: Action) -> bool {
+    !matches!(a, Action::Fold | Action::CheckCall)
+}
+
+fn preferred_actions_for_family(g: &Game, family: BaselineActionFamily) -> Vec<Action> {
+    let facing_bet = to_call_for(g, g.to_act) > 0;
+    match family {
+        BaselineActionFamily::Fold => vec![Action::Fold],
+        BaselineActionFamily::CheckCall => vec![Action::CheckCall],
+        BaselineActionFamily::SmallAggro => {
+            if facing_bet {
+                vec![Action::RaiseMin, Action::RaiseHalfPot]
+            } else {
+                vec![Action::BetThirdPot, Action::BetHalfPot]
+            }
+        }
+        BaselineActionFamily::MediumAggro => {
+            if facing_bet {
+                vec![Action::RaiseHalfPot, Action::RaiseThreeQuarterPot, Action::RaisePot]
+            } else {
+                vec![Action::BetHalfPot, Action::BetThreeQuarterPot, Action::BetPot]
+            }
+        }
+        BaselineActionFamily::LargeAggro => {
+            if facing_bet {
+                vec![
+                    Action::RaisePot,
+                    Action::RaiseOverbet125Pot,
+                    Action::RaiseOverbet150Pot,
+                    Action::RaiseOverbet175Pot,
+                    Action::RaiseOverbet200Pot,
+                ]
+            } else {
+                vec![
+                    Action::BetPot,
+                    Action::BetOverbet125Pot,
+                    Action::BetOverbet150Pot,
+                    Action::BetOverbet175Pot,
+                    Action::BetOverbet200Pot,
+                ]
+            }
+        }
+        BaselineActionFamily::Jam => vec![],
+    }
+}
+
+fn largest_aggressive_legal_action(g: &Game, legal: &[Action]) -> Option<Action> {
+    legal.iter()
+        .copied()
+        .filter(|a| is_aggressive_action(*a))
+        .max_by_key(|a| action_amount(g, *a))
+}
+
+fn project_family_to_legal_action(
+    g: &Game,
+    family: BaselineActionFamily,
+    legal: &[Action],
+) -> Option<Action> {
+    match family {
+        BaselineActionFamily::Jam => {
+            let stack = g.players[g.to_act].stack.max(1);
+            if let Some(best) = largest_aggressive_legal_action(g, legal) {
+                let amount = action_amount(g, best);
+                if amount * 10 >= stack * 9 {
+                    return Some(best);
+                }
+                return Some(best);
+            }
+            None
+        }
+        _ => preferred_actions_for_family(g, family)
+            .into_iter()
+            .find(|candidate| legal.contains(candidate)),
+    }
+}
+
+fn family_fallback_chain(family: BaselineActionFamily) -> &'static [BaselineActionFamily] {
+    match family {
+        BaselineActionFamily::Fold => &[BaselineActionFamily::Fold],
+        BaselineActionFamily::CheckCall => &[BaselineActionFamily::CheckCall],
+        BaselineActionFamily::SmallAggro => &[
+            BaselineActionFamily::SmallAggro,
+            BaselineActionFamily::CheckCall,
+        ],
+        BaselineActionFamily::MediumAggro => &[
+            BaselineActionFamily::MediumAggro,
+            BaselineActionFamily::SmallAggro,
+            BaselineActionFamily::CheckCall,
+        ],
+        BaselineActionFamily::LargeAggro => &[
+            BaselineActionFamily::LargeAggro,
+            BaselineActionFamily::MediumAggro,
+            BaselineActionFamily::SmallAggro,
+            BaselineActionFamily::CheckCall,
+        ],
+        BaselineActionFamily::Jam => &[
+            BaselineActionFamily::Jam,
+            BaselineActionFamily::LargeAggro,
+            BaselineActionFamily::MediumAggro,
+            BaselineActionFamily::SmallAggro,
+            BaselineActionFamily::CheckCall,
+        ],
+    }
+}
+
+fn project_baseline_policy_to_legal_actions(
+    g: &Game,
+    policy: &[(BaselineActionFamily, f64)],
+    legal: &[Action],
+) -> Vec<(Action, f64)> {
+    let mut out: Vec<(Action, f64)> = Vec::new();
+    for &(family, weight) in policy {
+        if weight <= 0.0 {
+            continue;
+        }
+        let projected = family_fallback_chain(family)
+            .iter()
+            .copied()
+            .find_map(|candidate| project_family_to_legal_action(g, candidate, legal));
+        let Some(action) = projected else {
+            continue;
+        };
+
+        if let Some((_, acc_weight)) = out.iter_mut().find(|(existing, _)| *existing == action) {
+            *acc_weight += weight;
+        } else {
+            out.push((action, weight));
+        }
+    }
+
+    if out.is_empty() {
+        if legal.contains(&Action::CheckCall) {
+            out.push((Action::CheckCall, 1.0));
+        } else if let Some(first) = legal.first().copied() {
+            out.push((first, 1.0));
+        }
+    }
+
+    out
+}
+
+fn sample_weighted_action(weighted: &[(Action, f64)], rng: &mut StdRng) -> Action {
+    if weighted.is_empty() {
+        return Action::CheckCall;
+    }
+    let total: f64 = weighted.iter().map(|(_, weight)| *weight).sum();
+    if total <= 1e-9 {
+        return weighted[0].0;
+    }
+
+    let mut draw = rng.gen::<f64>() * total;
+    for &(action, weight) in weighted {
+        if draw <= weight {
+            return action;
+        }
+        draw -= weight;
+    }
+    weighted.last().map(|(action, _)| *action).unwrap_or(Action::CheckCall)
+}
+
+fn baseline_choose_v1(g: &Game, rng: &mut StdRng) -> Action {
+    let idx = g.to_act;
+    let legal = legal_actions(g);
+    if legal.is_empty() {
+        return Action::CheckCall;
+    }
+
+    let Some(bucket) = extract_baseline_bucket_v1(g, idx) else {
+        return bot_choose_random(g, rng);
+    };
+    let policy = lookup_baseline_policy_v1(&bucket);
+    let weighted_actions = project_baseline_policy_to_legal_actions(g, &policy, &legal);
+    sample_weighted_action(&weighted_actions, rng)
+}
+
 fn action_reason(
     action: Action,
     ev: f64,
@@ -2503,14 +3477,18 @@ fn actions_with_ev_json_str(g: &Game, iters: u32) -> String {
     let max_stage_iters = *stages.last().unwrap_or(&200);
     let worlds = world_seeds_for_state(g, max_stage_iters);
     let mut totals = vec![0i64; acts.len()];
+    let mut sum_sq = vec![0.0f64; acts.len()];
     let mut evs = vec![0.0f64; acts.len()];
+    let mut ev_stderr = vec![0.0f64; acts.len()];
     let mut prev_iters = 0usize;
     let mut used_iters = stages[0];
 
     for stage_iters in stages {
         for world_seed in &worlds[prev_iters..stage_iters] {
             for (idx, action) in acts.iter().enumerate() {
-                totals[idx] += simulate_action_on_world(g, *action, *world_seed) as i64;
+                let outcome = simulate_action_on_world(g, *action, *world_seed) as i64;
+                totals[idx] += outcome;
+                sum_sq[idx] += (outcome as f64).powi(2);
             }
         }
         prev_iters = stage_iters;
@@ -2518,6 +3496,7 @@ fn actions_with_ev_json_str(g: &Game, iters: u32) -> String {
 
         for idx in 0..acts.len() {
             evs[idx] = totals[idx] as f64 / used_iters as f64;
+            ev_stderr[idx] = ev_standard_error(totals[idx], sum_sq[idx], used_iters);
         }
 
         let mut sorted_stage = evs.clone();
@@ -2538,29 +3517,76 @@ fn actions_with_ev_json_str(g: &Game, iters: u32) -> String {
     let explain_iters = ((used_iters / 2).max(80)).min(600);
     let state_metrics = compute_state_why_metrics(g, explain_iters);
 
-    // Baseline EV: simulate same worlds but with random opponents (style-neutral).
-    // 200 iters is enough for a useful signal without doubling compute time.
-    let baseline_iters = 200.min(max_stage_iters);
+    // Baseline EV: simulate the same worlds against the frozen baseline_v1 reference policy.
+    // Postflop uses the same rollout budget as pool EV because the UI treats reference EV
+    // as the primary recommendation there.
+    let baseline_iters = if g.street == Street::Preflop {
+        200.min(max_stage_iters)
+    } else {
+        used_iters
+    };
     let mut baseline_totals = vec![0i64; acts.len()];
+    let mut baseline_sum_sq = vec![0.0f64; acts.len()];
     for world_seed in &worlds[..baseline_iters] {
         for (idx, action) in acts.iter().enumerate() {
-            baseline_totals[idx] += simulate_action_baseline(g, *action, *world_seed) as i64;
+            let outcome = simulate_action_baseline(g, *action, *world_seed) as i64;
+            baseline_totals[idx] += outcome;
+            baseline_sum_sq[idx] += (outcome as f64).powi(2);
         }
     }
     let baseline_evs: Vec<f64> = baseline_totals
         .iter()
         .map(|&t| t as f64 / baseline_iters as f64)
         .collect();
+    let baseline_ev_stderr: Vec<f64> = baseline_totals
+        .iter()
+        .enumerate()
+        .map(|(idx, &t)| ev_standard_error(t, baseline_sum_sq[idx], baseline_iters))
+        .collect();
 
     let mut out: Vec<ActionEV> = vec![];
-    let best_ev = evs.iter().copied().fold(f64::NEG_INFINITY, f64::max);
-    let mut sorted_evs: Vec<f64> = evs.clone();
-    sorted_evs.sort_by(|a, b| b.total_cmp(a));
-    let second_ev = if sorted_evs.len() > 1 {
-        sorted_evs[1]
-    } else {
-        sorted_evs.first().copied().unwrap_or(best_ev)
-    };
+    let best_idx = evs
+        .iter()
+        .enumerate()
+        .max_by(|(_, a), (_, b)| a.total_cmp(b))
+        .map(|(idx, _)| idx)
+        .unwrap_or(0);
+    let best_ev = evs[best_idx];
+    let second_idx = evs
+        .iter()
+        .enumerate()
+        .filter(|(idx, _)| *idx != best_idx)
+        .max_by(|(_, a), (_, b)| a.total_cmp(b))
+        .map(|(idx, _)| idx)
+        .unwrap_or(best_idx);
+    let second_ev = evs[second_idx];
+    let (best_confidence, is_clear_best) = best_confidence_for_gap(
+        g,
+        (best_ev - second_ev).max(0.0),
+        ev_stderr[best_idx],
+        ev_stderr[second_idx],
+    );
+    let baseline_best_idx = baseline_evs
+        .iter()
+        .enumerate()
+        .max_by(|(_, a), (_, b)| a.total_cmp(b))
+        .map(|(idx, _)| idx)
+        .unwrap_or(0);
+    let baseline_best_ev = baseline_evs[baseline_best_idx];
+    let baseline_second_idx = baseline_evs
+        .iter()
+        .enumerate()
+        .filter(|(idx, _)| *idx != baseline_best_idx)
+        .max_by(|(_, a), (_, b)| a.total_cmp(b))
+        .map(|(idx, _)| idx)
+        .unwrap_or(baseline_best_idx);
+    let baseline_second_ev = baseline_evs[baseline_second_idx];
+    let (baseline_best_confidence, baseline_is_clear_best) = best_confidence_for_gap(
+        g,
+        (baseline_best_ev - baseline_second_ev).max(0.0),
+        baseline_ev_stderr[baseline_best_idx],
+        baseline_ev_stderr[baseline_second_idx],
+    );
 
     for (idx, a) in acts.iter().copied().enumerate() {
         let ev = evs[idx];
@@ -2580,7 +3606,14 @@ fn actions_with_ev_json_str(g: &Game, iters: u32) -> String {
             amount: amt,
             ev,
             baseline_ev: baseline_evs[idx],
+            ev_stderr: ev_stderr[idx],
+            best_confidence: best_confidence.to_string(),
+            is_clear_best,
             is_best,
+            baseline_ev_stderr: baseline_ev_stderr[idx],
+            baseline_best_confidence: baseline_best_confidence.to_string(),
+            baseline_is_clear_best,
+            baseline_is_best: idx == baseline_best_idx,
             reason: action_reason(a, ev, best_ev, second_ev, used_iters, &state_metrics),
             why: action_why(
                 &state_metrics,
@@ -2859,6 +3892,22 @@ mod wasm_api {
 mod tests {
     use super::*;
 
+    fn cloned_game(seed: u64) -> Game {
+        let ptr = pc_new_game(seed, 6);
+        assert!(!ptr.is_null(), "game allocation failed");
+        // SAFETY: ptr is valid until freed below.
+        let g = unsafe { &*ptr }.clone();
+        pc_free_game(ptr);
+        g
+    }
+
+    fn family_weight(policy: &[(BaselineActionFamily, f64)], family: BaselineActionFamily) -> f64 {
+        policy
+            .iter()
+            .find_map(|(candidate, weight)| (*candidate == family).then_some(*weight))
+            .unwrap_or(0.0)
+    }
+
     #[test]
     fn adaptive_sampling_plan_uses_200_800_1600_stages() {
         assert_eq!(adaptive_sampling_stages(80), vec![200]);
@@ -2933,6 +3982,59 @@ mod tests {
                 a as u8,
                 e1,
                 e2
+            );
+        }
+
+        pc_free_game(ptr);
+    }
+
+    #[test]
+    fn preflop_world_sampling_ignores_hidden_opponent_hole_cards() {
+        let ptr = pc_new_game(20260329, 6);
+        assert!(!ptr.is_null(), "game allocation failed");
+        pc_step_ai_until_user_or_hand_end(ptr);
+
+        // SAFETY: ptr is valid through this test and freed at the end.
+        let g = unsafe { &*ptr };
+        assert!(matches!(g.street, Street::Preflop), "expected a preflop user-turn state");
+        let u = user_index(g);
+        let mut hidden_rewritten = g.clone();
+
+        let replacement_holes = [
+            [Card { rank: 14, suit: 0 }, Card { rank: 13, suit: 0 }],
+            [Card { rank: 12, suit: 1 }, Card { rank: 11, suit: 1 }],
+            [Card { rank: 10, suit: 2 }, Card { rank: 9, suit: 2 }],
+            [Card { rank: 8, suit: 3 }, Card { rank: 7, suit: 3 }],
+            [Card { rank: 6, suit: 0 }, Card { rank: 5, suit: 1 }],
+        ];
+
+        let mut repl_idx = 0usize;
+        for i in 0..hidden_rewritten.players.len() {
+            if i == u {
+                continue;
+            }
+            hidden_rewritten.players[i].hole = replacement_holes[repl_idx];
+            repl_idx += 1;
+        }
+
+        let worlds_a = world_seeds_for_state(g, 200);
+        let worlds_b = world_seeds_for_state(&hidden_rewritten, 200);
+        assert_eq!(
+            worlds_a, worlds_b,
+            "world seeds must not change when only hidden opponent cards change"
+        );
+
+        let acts = legal_actions(g);
+        assert!(!acts.is_empty(), "expected legal preflop actions");
+        for action in acts {
+            let ev_a = estimate_ev(g, action, 200);
+            let ev_b = estimate_ev(&hidden_rewritten, action, 200);
+            assert!(
+                (ev_a - ev_b).abs() < 1e-9,
+                "preflop EV changed after rewriting hidden opponent cards for action {:?}: {} vs {}",
+                action as u8,
+                ev_a,
+                ev_b
             );
         }
 
@@ -3388,5 +4490,300 @@ mod tests {
         );
 
         pc_free_game(ptr);
+    }
+
+    #[test]
+    fn baseline_bucket_v1_extracts_expected_postflop_features() {
+        let mut g = cloned_game(20260309);
+        let u = user_index(&g);
+        let v = next_idx(g.players.len(), u);
+
+        g.hand_over = false;
+        g.street = Street::Flop;
+        g.board = vec![
+            Card { rank: 7, suit: 0 },
+            Card { rank: 2, suit: 2 },
+            Card { rank: 3, suit: 2 },
+        ];
+        g.pot = 100;
+        g.bet_to_call = 25;
+        g.street_bet_done = true;
+        g.raises_this_street = 0;
+        g.to_act = u;
+        g.dealer = if u == 0 { g.players.len() - 1 } else { u - 1 };
+
+        for (idx, p) in g.players.iter_mut().enumerate() {
+            p.in_hand = idx == u || idx == v;
+            p.stack = 400;
+            p.committed_street = if idx == v { 25 } else { 0 };
+            p.contributed_hand = p.committed_street;
+        }
+
+        g.players[u].hole = [Card { rank: 14, suit: 2 }, Card { rank: 13, suit: 2 }];
+        g.players[v].hole = [Card { rank: 9, suit: 1 }, Card { rank: 9, suit: 3 }];
+
+        let bucket = extract_baseline_bucket_v1(&g, u).expect("expected postflop bucket");
+        assert_eq!(bucket.street, BaselineStreetBucket::Flop);
+        assert_eq!(bucket.players, PlayersBucket::HeadsUp);
+        assert_eq!(bucket.position, PositionBucket::OutOfPosition);
+        assert_eq!(bucket.facing, FacingBucket::FacingSmall);
+        assert_eq!(bucket.spr_band, SprBand::Mid);
+        assert_eq!(bucket.board_pairing, BoardPairingBucket::Unpaired);
+        assert_eq!(bucket.board_suit, BoardSuitBucket::TwoTone);
+        assert_eq!(bucket.strength, StrengthBucket::Weak);
+        assert_eq!(bucket.draw_class, DrawClass::FlushDraw);
+    }
+
+    #[test]
+    fn premium_baseline_bucket_is_more_aggressive_than_air() {
+        let premium = BaselineNodeBucketV1 {
+            street: BaselineStreetBucket::River,
+            players: PlayersBucket::HeadsUp,
+            position: PositionBucket::OutOfPosition,
+            facing: FacingBucket::FacingLarge,
+            spr_band: SprBand::Low,
+            board_pairing: BoardPairingBucket::Unpaired,
+            board_suit: BoardSuitBucket::Rainbow,
+            strength: StrengthBucket::Premium,
+            draw_class: DrawClass::None,
+        };
+        let air = BaselineNodeBucketV1 {
+            strength: StrengthBucket::Air,
+            ..premium
+        };
+
+        let premium_policy = lookup_baseline_policy_v1(&premium);
+        let air_policy = lookup_baseline_policy_v1(&air);
+
+        let premium_pressure = family_weight(&premium_policy, BaselineActionFamily::MediumAggro)
+            + family_weight(&premium_policy, BaselineActionFamily::LargeAggro)
+            + family_weight(&premium_policy, BaselineActionFamily::Jam);
+        let air_pressure = family_weight(&air_policy, BaselineActionFamily::MediumAggro)
+            + family_weight(&air_policy, BaselineActionFamily::LargeAggro)
+            + family_weight(&air_policy, BaselineActionFamily::Jam);
+
+        assert!(
+            premium_pressure > air_pressure,
+            "premium bucket should apply more pressure than air: premium={} air={}",
+            premium_pressure,
+            air_pressure
+        );
+        assert!(
+            family_weight(&premium_policy, BaselineActionFamily::Fold)
+                < family_weight(&air_policy, BaselineActionFamily::Fold),
+            "premium bucket should fold less often than air"
+        );
+    }
+
+    #[test]
+    fn multiway_large_air_bucket_is_more_passive_than_heads_up() {
+        let heads_up = BaselineNodeBucketV1 {
+            street: BaselineStreetBucket::River,
+            players: PlayersBucket::HeadsUp,
+            position: PositionBucket::OutOfPosition,
+            facing: FacingBucket::FacingLarge,
+            spr_band: SprBand::Mid,
+            board_pairing: BoardPairingBucket::Unpaired,
+            board_suit: BoardSuitBucket::Rainbow,
+            strength: StrengthBucket::Air,
+            draw_class: DrawClass::None,
+        };
+        let multiway = BaselineNodeBucketV1 {
+            players: PlayersBucket::Multiway,
+            ..heads_up
+        };
+
+        let heads_up_policy = lookup_baseline_policy_v1(&heads_up);
+        let multiway_policy = lookup_baseline_policy_v1(&multiway);
+
+        let heads_up_pressure = family_weight(&heads_up_policy, BaselineActionFamily::MediumAggro)
+            + family_weight(&heads_up_policy, BaselineActionFamily::LargeAggro)
+            + family_weight(&heads_up_policy, BaselineActionFamily::Jam);
+        let multiway_pressure = family_weight(&multiway_policy, BaselineActionFamily::MediumAggro)
+            + family_weight(&multiway_policy, BaselineActionFamily::LargeAggro)
+            + family_weight(&multiway_policy, BaselineActionFamily::Jam);
+
+        assert!(
+            multiway_pressure < heads_up_pressure,
+            "multiway pressure should drop for air buckets facing large bets: hu={} mw={}",
+            heads_up_pressure,
+            multiway_pressure
+        );
+        assert!(
+            family_weight(&multiway_policy, BaselineActionFamily::Fold)
+                > family_weight(&heads_up_policy, BaselineActionFamily::Fold),
+            "multiway air bucket should fold more often than heads-up air bucket"
+        );
+    }
+
+    #[test]
+    fn bot_choose_folds_air_no_draw_more_often_multiway_facing_large() {
+        let mut g = cloned_game(20260311);
+        let u = user_index(&g);
+        let v1 = next_idx(g.players.len(), u);
+        let v2 = next_idx(g.players.len(), v1);
+        let v3 = next_idx(g.players.len(), v2);
+
+        g.hand_over = false;
+        g.street = Street::Turn;
+        g.board = vec![
+            Card { rank: 14, suit: 0 },
+            Card { rank: 13, suit: 1 },
+            Card { rank: 7, suit: 2 },
+            Card { rank: 2, suit: 3 },
+        ];
+        g.pot = 120;
+        g.bet_to_call = 150;
+        g.street_bet_done = true;
+        g.raises_this_street = 0;
+        g.to_act = v1;
+        g.dealer = u;
+
+        for (idx, p) in g.players.iter_mut().enumerate() {
+            p.in_hand = idx == u || idx == v1 || idx == v2 || idx == v3;
+            p.stack = 600;
+            p.committed_street = if idx == v2 { 150 } else { 0 };
+            p.contributed_hand = p.committed_street;
+            p.style = BotStyle {
+                tight: 0.5,
+                aggro: 0.5,
+                calliness: 0.5,
+                skill: 0.5,
+            };
+        }
+
+        g.players[v1].hole = [Card { rank: 9, suit: 0 }, Card { rank: 4, suit: 1 }];
+        g.players[v2].hole = [Card { rank: 14, suit: 2 }, Card { rank: 12, suit: 2 }];
+        g.players[v3].hole = [Card { rank: 11, suit: 3 }, Card { rank: 10, suit: 3 }];
+        g.players[u].hole = [Card { rank: 8, suit: 0 }, Card { rank: 8, suit: 1 }];
+
+        let action = bot_choose(&g, v1);
+        assert!(
+            matches!(action, Action::Fold),
+            "air/no-draw bot should fold more often when multiway facing an overbet-sized continue price"
+        );
+    }
+
+    #[test]
+    fn action_ev_json_exports_reference_best_metadata() {
+        let mut g = cloned_game(20260312);
+        let u = user_index(&g);
+
+        g.hand_over = false;
+        g.street = Street::Flop;
+        g.board = vec![
+            Card { rank: 10, suit: 1 },
+            Card { rank: 7, suit: 2 },
+            Card { rank: 3, suit: 3 },
+        ];
+        g.pot = 90;
+        g.bet_to_call = 0;
+        g.street_bet_done = false;
+        g.raises_this_street = 0;
+        g.to_act = u;
+
+        let v = next_idx(g.players.len(), u);
+        for (idx, p) in g.players.iter_mut().enumerate() {
+            p.in_hand = idx == u || idx == v;
+            p.stack = 500;
+            p.committed_street = 0;
+            p.contributed_hand = 0;
+        }
+        g.players[u].hole = [Card { rank: 14, suit: 1 }, Card { rank: 5, suit: 1 }];
+
+        let payload = actions_with_ev_json_str(&g, 200);
+        let parsed: serde_json::Value = serde_json::from_str(&payload).expect("valid action ev json");
+        let first = parsed.as_array().and_then(|arr| arr.first()).expect("at least one action");
+
+        assert!(first.get("baseline_ev_stderr").is_some(), "expected baseline_ev_stderr field");
+        assert!(first.get("baseline_best_confidence").is_some(), "expected baseline_best_confidence field");
+        assert!(first.get("baseline_is_clear_best").is_some(), "expected baseline_is_clear_best field");
+        assert!(first.get("baseline_is_best").is_some(), "expected baseline_is_best field");
+    }
+
+    #[test]
+    fn baseline_choose_v1_returns_legal_action() {
+        let mut g = cloned_game(20260310);
+        let u = user_index(&g);
+        let v = next_idx(g.players.len(), u);
+
+        g.hand_over = false;
+        g.street = Street::River;
+        g.board = vec![
+            Card { rank: 14, suit: 1 },
+            Card { rank: 11, suit: 1 },
+            Card { rank: 7, suit: 3 },
+            Card { rank: 7, suit: 0 },
+            Card { rank: 2, suit: 2 },
+        ];
+        g.pot = 180;
+        g.bet_to_call = 70;
+        g.street_bet_done = true;
+        g.raises_this_street = 0;
+        g.to_act = v;
+        g.dealer = u;
+
+        for (idx, p) in g.players.iter_mut().enumerate() {
+            p.in_hand = idx == u || idx == v;
+            p.stack = if idx == v { 95 } else { 500 };
+            p.committed_street = 0;
+            p.contributed_hand = 0;
+        }
+
+        g.players[v].hole = [Card { rank: 14, suit: 3 }, Card { rank: 7, suit: 2 }];
+        g.players[u].hole = [Card { rank: 13, suit: 2 }, Card { rank: 12, suit: 0 }];
+
+        let legal = legal_actions(&g);
+        assert!(!legal.is_empty(), "expected legal actions for baseline chooser");
+
+        let mut rng = StdRng::seed_from_u64(17);
+        let action = baseline_choose_v1(&g, &mut rng);
+        assert!(
+            legal.contains(&action),
+            "baseline chooser returned illegal action {:?} from {:?}",
+            action_code_for(action),
+            legal.iter().map(|a| action_code_for(*a)).collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
+    fn made_flush_on_turn_is_not_classified_as_flush_draw() {
+        let mut g = cloned_game(20260402);
+        let u = user_index(&g);
+        let v = next_idx(g.players.len(), u);
+
+        g.hand_over = false;
+        g.street = Street::Turn;
+        // Board has 3 hearts — combined with user's 2 hearts that's 5 of a suit (made flush)
+        g.board = vec![
+            Card { rank: 10, suit: 0 }, // 10♥
+            Card { rank: 5, suit: 0 },  // 5♥
+            Card { rank: 9, suit: 1 },  // 9♦
+            Card { rank: 3, suit: 0 },  // 3♥
+        ];
+        g.pot = 120;
+        g.bet_to_call = 0;
+        g.street_bet_done = false;
+        g.raises_this_street = 0;
+        g.to_act = u;
+
+        for (idx, p) in g.players.iter_mut().enumerate() {
+            p.in_hand = idx == u || idx == v;
+            p.stack = 400;
+            p.committed_street = 0;
+            p.contributed_hand = 60;
+        }
+
+        // User holds two hearts — made flush with the board
+        g.players[u].hole = [Card { rank: 14, suit: 0 }, Card { rank: 7, suit: 0 }];
+        g.players[v].hole = [Card { rank: 12, suit: 2 }, Card { rank: 11, suit: 3 }];
+
+        let draw = actor_draw_class(&g, u);
+        assert_eq!(
+            draw,
+            DrawClass::None,
+            "made flush should not be classified as a draw, got {:?}",
+            draw,
+        );
     }
 }

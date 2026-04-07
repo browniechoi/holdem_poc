@@ -15,11 +15,15 @@ from typing import Any
 
 from generate_latest_session_report import (
     DEFAULT_RAW_LOG,
+    _decision_best_confidence,
+    _decision_best_stderr,
+    _decision_has_clear_best,
     _latest_session_id,
     _load_jsonl,
     _normalize_play_event,
     _previous_session_id,
     _session_summary_for_sid,
+    _top_line_label,
     generate_report,
 )
 
@@ -58,6 +62,7 @@ def _build_evidence_block(events: list[dict[str, Any]], session_id: str) -> str:
     decisions = [event for event in session_events if event.get("event") == "decision_lock"]
     undo_count = sum(1 for event in session_events if event.get("event") == "undo")
     bust_count = sum(1 for event in session_events if event.get("event") == "user_bust")
+    clear_best_count = sum(1 for event in decisions if _decision_has_clear_best(event))
 
     chosen_ctr: collections.Counter[str] = collections.Counter()
     best_ctr: collections.Counter[str] = collections.Counter()
@@ -103,7 +108,11 @@ def _build_evidence_block(events: list[dict[str, Any]], session_id: str) -> str:
                 "hand_id": _safe_int(decision.get("hand_id")),
                 "street": str(decision.get("street") or "unknown"),
                 "chosen_action": str(decision.get("chosen_action") or ""),
-                "best_action": str(decision.get("best_action") or ""),
+                "top_line": _top_line_label(decision),
+                "best_action": str(decision.get("best_action") or "") if _decision_has_clear_best(decision) else "",
+                "best_confidence": _decision_best_confidence(decision),
+                "best_ev_stderr": round(_decision_best_stderr(decision) or 0.0, 2),
+                "is_clear_best": _decision_has_clear_best(decision),
                 "chosen_ev": round(_safe_float(decision.get("chosen_ev")), 2),
                 "best_ev": round(_safe_float(decision.get("best_ev")), 2),
                 "regret": round(_safe_float(decision.get("regret")), 2),
@@ -169,6 +178,8 @@ def _build_evidence_block(events: list[dict[str, Any]], session_id: str) -> str:
             "bust_count": bust_count,
             "near_opt_count": near_opt_count,
             "near_opt_rate": round((near_opt_count / decision_count) if decision_count else 0.0, 4),
+            "clear_best_count": clear_best_count,
+            "clear_best_rate": round((clear_best_count / decision_count) if decision_count else 0.0, 4),
             "average_regret": round(
                 (sum(_safe_float(decision.get("regret")) for decision in decisions) / decision_count) if decision_count else 0.0,
                 2,
@@ -218,6 +229,7 @@ Requirements:
 - Do not dump raw logs or internal schema details.
 - Identify 2-4 concrete behavioral patterns only if the evidence supports them.
 - Every takeaway must cite evidence such as hand ids, streets, action-count mismatches, regret values, undo rate, or bust count.
+- Do not call an action "best" unless `is_clear_best` is true in the evidence. If the top line is unclear, describe it as a directional estimate.
 - If previous-session comparison is present, explain what actually changed instead of restating the same advice in slightly different wording.
 - Do not repeat the same leak in multiple bullets with different wording.
 - Do not mention overbets, undo habits, or busts unless the evidence clearly supports that topic.

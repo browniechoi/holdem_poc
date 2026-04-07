@@ -14,7 +14,7 @@ export class Game {
     return JSON.parse(this.wasm.state_json())
   }
 
-  actions(iters = 1200): ActionEV[] {
+  actions(iters = 1600): ActionEV[] {
     return JSON.parse(this.wasm.actions_with_ev_json(iters))
   }
 

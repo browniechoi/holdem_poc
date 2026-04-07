@@ -60,7 +60,14 @@ export interface ActionEV {
   amount: number
   ev: number
   baseline_ev: number
+  ev_stderr: number
+  best_confidence: string
+  is_clear_best: boolean
   is_best: boolean
+  baseline_ev_stderr: number
+  baseline_best_confidence: string
+  baseline_is_clear_best: boolean
+  baseline_is_best: boolean
   reason: string
   why: WhyMetrics
 }

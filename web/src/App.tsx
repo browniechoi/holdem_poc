@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useCallback } from 'react'
+import { useEffect, useRef, useState, useCallback, useMemo } from 'react'
 import { Game } from './game'
 import type { PublicState, ActionEV } from './types'
 import { PlayerSeat } from './components/PlayerSeat'
@@ -6,19 +6,20 @@ import { Board } from './components/Board'
 import { ActionPanel } from './components/ActionPanel'
 import { ReviewPanel } from './components/ReviewPanel'
 import { HandResult } from './components/HandResult'
-import type { DecisionRecord } from './components/HandResult'
 import { LogStrip } from './components/LogStrip'
 import { HandRankingsModal } from './components/HandRankingsModal'
+import { SessionActionPanel } from './components/SessionActionPanel'
+import { isNearOptimal, ACTION_DISPLAY, type DecisionRecord } from './evUtils'
 import './App.css'
 
 const SEAT_STYLE: React.CSSProperties[] = [
   { bottom: 0,     left: '50%',  transform: 'translateX(-50%)' },
-  { top:  '75%',   left: '6%',   transform: 'translate(-50%, -50%)' },
-  { top:  '25%',   left: '6%',   transform: 'translate(-50%, -50%)' },
+  { top:  '75%',   left: '8%',   transform: 'translate(-50%, -50%)' },
+  { top:  '25%',   left: '8%',   transform: 'translate(-50%, -50%)' },
   { top:  '8%',    left: '25%',  transform: 'translate(-50%, -50%)' },
   { top:  '8%',    left: '75%',  transform: 'translate(-50%, -50%)' },
-  { top:  '25%',   left: '94%',  transform: 'translate(-50%, -50%)' },
-  { top:  '75%',   left: '94%',  transform: 'translate(-50%, -50%)' },
+  { top:  '25%',   left: '92%',  transform: 'translate(-50%, -50%)' },
+  { top:  '75%',   left: '92%',  transform: 'translate(-50%, -50%)' },
   { bottom: 0,     left: '27%',  transform: 'translateX(-50%)' },
   { bottom: 0,     left: '73%',  transform: 'translateX(-50%)' },
 ]
@@ -29,19 +30,18 @@ type Phase = 'loading' | 'user_turn' | 'reviewing' | 'bot_acting' | 'hand_over'
 
 interface SessionStats {
   handsPlayed: number
-  decisions: number
-  nearOptimal: number
 }
 
 interface ReviewData {
   chosenCode: number
   actions: ActionEV[]
+  street: string
 }
 
-function isNearOptimal(chosen: ActionEV, allActions: ActionEV[]): boolean {
-  const bestEV = Math.max(...allActions.map(a => a.ev))
-  const tolerance = Math.max(Math.abs(bestEV) * 0.05, 2.0)
-  return chosen.ev >= bestEV - tolerance
+function primaryBestAction(actions: ActionEV[], street: string) {
+  return street === 'preflop'
+    ? actions.find(a => a.is_best)
+    : actions.find(a => a.baseline_is_best)
 }
 
 export default function App() {
@@ -52,8 +52,10 @@ export default function App() {
   const [actionsLoading, setActionsLoading] = useState(false)
   const [showEV, setShowEV] = useState(false)
   const [review, setReview] = useState<ReviewData | null>(null)
-  const [session, setSession] = useState<SessionStats>({ handsPlayed: 0, decisions: 0, nearOptimal: 0 })
-  const [handDecisions, setHandDecisions] = useState<DecisionRecord[]>([])
+  const [reviewState, setReviewState] = useState<PublicState | null>(null)
+  const [session, setSession] = useState<SessionStats>({ handsPlayed: 0 })
+  const [gradedPreflopLedger, setGradedPreflopLedger] = useState<boolean[]>([])
+  const [sessionDecisions, setSessionDecisions] = useState<DecisionRecord[]>([])
   const [showRankings, setShowRankings] = useState(false)
   const [canUndo, setCanUndo] = useState(false)
   const [dealKey, setDealKey] = useState(0)
@@ -64,6 +66,12 @@ export default function App() {
 
   // Ref so the animation loop can access a fresh ref without stale closure
   const animLoopRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  const currentHandNo = session.handsPlayed + 1
+  const handDecisions = useMemo(
+    () => sessionDecisions.filter(d => d.handNo === currentHandNo),
+    [sessionDecisions, currentHandNo],
+  )
 
   const refresh = useCallback((g: Game) => {
     const s = g.state()
@@ -129,31 +137,51 @@ export default function App() {
 
   const handleAct = useCallback((code: number) => {
     const g = gameRef.current
-    if (!g || phase !== 'user_turn') return
+    if (!g || phase !== 'user_turn' || !state) return
 
     const chosen = actions.find(a => a.action_code === code)!
-    const nearOpt = isNearOptimal(chosen, actions)
-    const bestEV = Math.max(...actions.map(a => a.ev))
-    const label = chosen.action + (chosen.amount > 0 && chosen.action !== 'fold' ? ` $${chosen.amount}` : '')
+    const decisionStreet = state.street
+    const best = primaryBestAction(actions, decisionStreet)
+    const graded = decisionStreet === 'preflop' && !!best?.is_clear_best
+    const nearOpt = graded ? isNearOptimal(chosen, actions) : false
+    const bestEV = actions.length ? Math.max(...actions.map(a => a.ev)) : undefined
+    const displayName = ACTION_DISPLAY[chosen.action] ?? chosen.action
+    const label = displayName + (chosen.amount > 0 && chosen.action !== 'fold' ? ` $${chosen.amount}` : '')
+    const confidence = decisionStreet === 'preflop'
+      ? best?.best_confidence
+      : best?.baseline_best_confidence
+    const clearBest = decisionStreet === 'preflop'
+      ? best?.is_clear_best
+      : best?.baseline_is_clear_best
 
-    setHandDecisions(prev => [...prev, {
-      label, ev: chosen.ev, bestEV, nearOptimal: nearOpt,
+    setSessionDecisions(prev => [...prev, {
+      id: `${currentHandNo}-${decisionStreet}-${prev.length + 1}-${code}`,
+      handNo: currentHandNo,
+      label,
+      street: decisionStreet,
+      graded,
+      ev: chosen.ev,
+      bestEV,
+      nearOptimal: graded ? nearOpt : undefined,
+      reviewNote: graded
+        ? undefined
+        : best
+          ? `${decisionStreet === 'preflop' ? 'preflop' : 'reference'} ${confidence}-confidence${clearBest ? '' : ' directional'} estimate`
+          : 'estimate unavailable',
     }])
     if (chosen.action === 'fold') setUserFolded(true)
-    setSession(s => ({
-      ...s,
-      decisions: s.decisions + 1,
-      nearOptimal: s.nearOptimal + (nearOpt ? 1 : 0),
-    }))
+    if (graded) {
+      setGradedPreflopLedger(prev => [...prev, nearOpt])
+    }
 
     if (!showEV) {
       // Show review first; bots animate after user clicks Continue
-      setReview({ chosenCode: code, actions: [...actions] })
+      setReview({ chosenCode: code, actions: [...actions], street: decisionStreet })
+      setReviewState(JSON.parse(JSON.stringify(state)) as PublicState)
       setPhase('reviewing')
       setTimeout(() => {
         try { g.checkpoint() } catch (e) { console.warn('checkpoint failed:', e) }
         g.applyUserAction(code)
-        setState(g.state())
         setCanUndo(g.canUndo)
       }, 0)
     } else {
@@ -167,25 +195,22 @@ export default function App() {
         startBotAnimation(g)
       }, 0)
     }
-  }, [phase, actions, showEV, startBotAnimation])
+  }, [phase, actions, showEV, startBotAnimation, state, currentHandNo])
 
   const handleUndo = useCallback(() => {
     const g = gameRef.current
     if (!g) return
     if (animLoopRef.current) { clearTimeout(animLoopRef.current); animLoopRef.current = null }
     if (!g.undo()) return
-    setHandDecisions(prev => {
+    setSessionDecisions(prev => {
       const last = prev[prev.length - 1]
-      if (last) {
-        setSession(s => ({
-          ...s,
-          decisions: s.decisions - 1,
-          nearOptimal: s.nearOptimal - (last.nearOptimal ? 1 : 0),
-        }))
+      if (last?.graded) {
+        setGradedPreflopLedger(ledger => ledger.slice(0, -1))
       }
       return prev.slice(0, -1)
     })
     setReview(null)
+    setReviewState(null)
     setUserFolded(false)
     setCanUndo(false)
     setPhase('loading')
@@ -196,6 +221,7 @@ export default function App() {
     const g = gameRef.current
     if (!g) return
     setReview(null)
+    setReviewState(null)
     // Now animate the bots that acted after the user's move
     startBotAnimation(g)
   }, [startBotAnimation])
@@ -212,7 +238,7 @@ export default function App() {
     const g = gameRef.current
     if (!g) return
     setSession(s => ({ ...s, handsPlayed: s.handsPlayed + 1 }))
-    setHandDecisions([])
+    setReviewState(null)
     setUserFolded(false)
     setDealKey(k => k + 1)
     setPhase('loading')
@@ -226,17 +252,20 @@ export default function App() {
     return <div className="loading-screen">Loading engine…</div>
   }
 
-  const { players, dealer_idx, sb_idx, bb_idx, to_act } = state
-  const showdownOrOver = state.hand_over || state.street === 'showdown'
-  const userPlayer = players.find(p => p.is_user)
+  const displayState = phase === 'reviewing' && reviewState ? reviewState : state
+  const { players, dealer_idx, sb_idx, bb_idx, to_act } = displayState
+  const showdownOrOver = displayState.hand_over || displayState.street === 'showdown'
+  const userPlayer = displayState.players.find(p => p.is_user)
   const isBotActing = phase === 'bot_acting'
+  const gradedPreflopDecisions = gradedPreflopLedger.length
+  const gradedPreflopNearOpt = gradedPreflopLedger.filter(Boolean).length
 
   return (
     <div className="app">
       <header className="app-header">
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
           <span className="app-title">HoldemPOC</span>
-          <button className="rankings-btn" onClick={() => setShowRankings(true)}>Hand Rankings</button>
+          <button className="rankings-btn" onClick={() => setShowRankings(true)}>Cheat Sheets</button>
         </div>
         <div className="app-header-right">
           <span className="app-stack">
@@ -249,12 +278,14 @@ export default function App() {
           )}
           <span className="app-session">
             Hands: <strong>{session.handsPlayed}</strong>
-            {session.decisions > 0 && (
-              <> · Optimal: <strong>{Math.round(session.nearOptimal / session.decisions * 100)}%</strong> ({session.decisions})</>
+            {gradedPreflopDecisions > 0 && (
+              <> · Graded preflop: <strong>{Math.round(gradedPreflopNearOpt / gradedPreflopDecisions * 100)}%</strong> ({gradedPreflopNearOpt}/{gradedPreflopDecisions})</>
             )}
           </span>
         </div>
       </header>
+
+      <LogStrip entries={fullLog} />
 
       <div className="table-container">
         <div className="table-felt">
@@ -269,8 +300,8 @@ export default function App() {
                 isDealer={i === dealer_idx}
                 isSB={i === sb_idx}
                 isBB={i === bb_idx}
-                isActing={i === to_act && !state.hand_over}
-                isWinner={state.hand_over && state.winner_names.includes(p.name)}
+                isActing={i === to_act && !displayState.hand_over}
+                isWinner={displayState.hand_over && displayState.winner_names.includes(p.name)}
                 showCards={p.is_user || showdownOrOver}
                 position={i}
                 isThinking={phase === 'loading' || actionsLoading}
@@ -281,46 +312,49 @@ export default function App() {
           ))}
 
           <div className="table-center">
-            <Board state={state} />
+            <Board state={displayState} />
           </div>
         </div>
       </div>
 
       <div className="bottom-area">
-        {phase === 'hand_over' ? (
-          <HandResult state={state} decisions={handDecisions} onNext={handleNextHand} />
-        ) : phase === 'reviewing' && review ? (
-          <ReviewPanel
-            chosenCode={review.chosenCode}
-            actions={review.actions}
-            onContinue={handleContinueReview}
-            onUndo={canUndo ? handleUndo : undefined}
-            onSkip={userFolded ? handleSkipToResult : undefined}
-          />
-        ) : phase === 'bot_acting' ? (
-          <div className="thinking">
-            <span className="thinking-dots">opponents deciding</span>
-            {userFolded && (
-              <button className="skip-btn" onClick={handleSkipToResult}>Skip to result</button>
-            )}
-          </div>
-        ) : phase === 'loading' || actionsLoading ? (
-          <div className="thinking">
-            <span className="thinking-dots">computing EV</span>
-          </div>
-        ) : (
-          <ActionPanel
-            actions={actions}
-            onAct={handleAct}
-            disabled={phase !== 'user_turn'}
-            showEV={showEV}
-            onToggleEV={() => setShowEV(v => !v)}
-            street={state.street}
-            userHole={state.user_hole}
-          />
-        )}
+        <div className="bottom-main">
+          {phase === 'hand_over' ? (
+            <HandResult state={state} decisions={handDecisions} onNext={handleNextHand} />
+          ) : phase === 'reviewing' && review ? (
+            <ReviewPanel
+              chosenCode={review.chosenCode}
+              actions={review.actions}
+              street={review.street}
+              onContinue={handleContinueReview}
+              onUndo={canUndo ? handleUndo : undefined}
+              onSkip={userFolded ? handleSkipToResult : undefined}
+            />
+          ) : phase === 'bot_acting' ? (
+            <div className="thinking">
+              <span className="thinking-dots">opponents deciding</span>
+              {userFolded && (
+                <button className="skip-btn" onClick={handleSkipToResult}>Skip to result</button>
+              )}
+            </div>
+          ) : phase === 'loading' || actionsLoading ? (
+            <div className="thinking">
+              <span className="thinking-dots">computing EV</span>
+            </div>
+          ) : (
+            <ActionPanel
+              actions={actions}
+              onAct={handleAct}
+              disabled={phase !== 'user_turn'}
+              showEV={showEV}
+              onToggleEV={() => setShowEV(v => !v)}
+              street={state.street}
+              userHole={state.user_hole}
+            />
+          )}
+        </div>
 
-        <LogStrip entries={fullLog} />
+        <SessionActionPanel decisions={sessionDecisions} />
       </div>
 
       {showRankings && <HandRankingsModal onClose={() => setShowRankings(false)} />}

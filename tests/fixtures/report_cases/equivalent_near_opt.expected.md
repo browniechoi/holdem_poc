@@ -39,7 +39,7 @@ For this session:
 
 ## Top Costly Decisions (By Regret)
 
-| ts | hand | street | chosen | best | regret | tolerance | pot | to_call | user_stack |
+| ts | hand | street | chosen | top line | regret | tolerance | pot | to_call | user_stack |
 |---|---:|---|---|---|---:|---:|---:|---:|---:|
 | 12:00:05Z | 1 | flop | check/call | check/call | 0.0 | 5.0 | 100 | 20 | 480 |
 

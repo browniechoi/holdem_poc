@@ -42,9 +42,18 @@ struct PublicPlayer: Codable, Identifiable {
 struct ActionEV: Codable, Identifiable {
     var id: String { action }
     let action: String
+    let action_code: UInt8
     let amount: Int
     let ev: Double
+    let baseline_ev: Double
+    let ev_stderr: Double
+    let best_confidence: String
+    let is_clear_best: Bool
     let is_best: Bool
+    let baseline_ev_stderr: Double
+    let baseline_best_confidence: String
+    let baseline_is_clear_best: Bool
+    let baseline_is_best: Bool
     let reason: String
     let why: WhyMetrics
 }

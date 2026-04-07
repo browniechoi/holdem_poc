@@ -67,6 +67,50 @@ def _float_or_none(value: Any) -> float | None:
         return None
 
 
+def _bool_or_none(value: Any) -> bool | None:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        return bool(value)
+    if isinstance(value, str):
+        lowered = value.strip().lower()
+        if lowered in {"true", "1", "yes"}:
+            return True
+        if lowered in {"false", "0", "no"}:
+            return False
+    return None
+
+
+def _decision_best_confidence(event: dict[str, Any]) -> str | None:
+    value = event.get("best_confidence")
+    if not isinstance(value, str):
+        return None
+    value = value.strip().lower()
+    return value or None
+
+
+def _decision_has_clear_best(event: dict[str, Any]) -> bool:
+    explicit = _bool_or_none(event.get("is_clear_best"))
+    if explicit is not None:
+        return explicit
+    # Older logs did not encode confidence metadata. Preserve backward compatibility by
+    # treating them as clear-best unless the event explicitly says otherwise.
+    return True
+
+
+def _decision_best_stderr(event: dict[str, Any]) -> float | None:
+    return _float_or_none(event.get("best_ev_stderr"))
+
+
+def _top_line_label(event: dict[str, Any]) -> str:
+    if _decision_has_clear_best(event):
+        return str(event.get("best_action") or "")
+    confidence = _decision_best_confidence(event)
+    if confidence:
+        return f"unclear ({confidence}-confidence)"
+    return "unclear"
+
+
 def _time_only(ts: str) -> str:
     # "2026-03-02T10:41:23Z" -> "10:41:23Z"
     if not ts:
@@ -183,6 +227,16 @@ def _decision_summary(decisions: list[dict[str, Any]], undos: int, busts: int) -
     )
     avg_regret = (total_regret / decision_count) if decision_count else 0.0
     undo_rate = (undos / decision_count) if decision_count else 0.0
+    confidence_metadata_count = sum(
+        1
+        for e in decisions
+        if e.get("is_clear_best") is not None
+        or e.get("best_confidence") is not None
+        or e.get("best_ev_stderr") is not None
+    )
+    clear_best_count = sum(1 for e in decisions if _decision_has_clear_best(e))
+    stderr_values = [value for e in decisions if (value := _decision_best_stderr(e)) is not None]
+    avg_best_stderr = (sum(stderr_values) / len(stderr_values)) if stderr_values else None
     last_session_realized_pnl = 0.0
     for e in decisions:
         val = e.get("session_realized_pnl")
@@ -197,6 +251,10 @@ def _decision_summary(decisions: list[dict[str, Any]], undos: int, busts: int) -
         "undo_count": undos,
         "undo_rate": undo_rate,
         "bust_count": busts,
+        "confidence_metadata_count": confidence_metadata_count,
+        "clear_best_count": clear_best_count,
+        "clear_best_rate": (clear_best_count / decision_count) if decision_count else 0.0,
+        "avg_best_stderr": avg_best_stderr,
         "session_realized_pnl": last_session_realized_pnl,
     }
 
@@ -361,6 +419,11 @@ def generate_report(
     total_regret = float(current_summary["total_regret"])
     avg_regret = float(current_summary["avg_regret"])
     undo_rate = float(current_summary["undo_rate"])
+    confidence_metadata_count = int(current_summary["confidence_metadata_count"])
+    confidence_metadata_available = confidence_metadata_count > 0
+    clear_best_count = int(current_summary["clear_best_count"])
+    clear_best_rate = float(current_summary["clear_best_rate"])
+    avg_best_stderr = _float_or_none(current_summary["avg_best_stderr"])
     total_session_realized_pnl_delta = sum(float(e.get("session_realized_pnl_delta") or 0.0) for e in decisions)
     avg_session_realized_pnl_delta = (
         total_session_realized_pnl_delta / decision_count if decision_count else 0.0
@@ -429,6 +492,12 @@ def generate_report(
     md.append(f"- Near-optimal (regret <= tolerance): `{near_opt}/{decision_count}` (`{_fmt_float((near_opt / decision_count) * 100.0) if decision_count else '0.0'}%`)")
     md.append(f"- Total regret: `{_fmt_float(total_regret)}` chips")
     md.append(f"- Avg regret: `{_fmt_float(avg_regret)}` chips/decision")
+    if confidence_metadata_available:
+        md.append(
+            f"- Supported clear-best decisions: `{clear_best_count}/{decision_count}` (`{_fmt_float(clear_best_rate * 100.0)}%`)"
+        )
+    if confidence_metadata_available and avg_best_stderr is not None:
+        md.append(f"- Avg best-line standard error: `±{_fmt_float(avg_best_stderr)}` chips")
     md.append(f"- Session realized P&L: `{_fmt_float(last_session_realized_pnl)}` chips")
     md.append(
         f"- Realized P&L delta / decision: `{_fmt_float(avg_session_realized_pnl_delta)}` chips"
@@ -445,11 +514,17 @@ def generate_report(
         near_delta = float(current_summary["near_opt_rate"]) - float(previous_summary["near_opt_rate"])
         avg_regret_delta = float(current_summary["avg_regret"]) - float(previous_summary["avg_regret"])
         pnl_delta = float(current_summary["session_realized_pnl"]) - float(previous_summary["session_realized_pnl"])
+        clear_best_delta = float(current_summary["clear_best_rate"]) - float(previous_summary["clear_best_rate"])
         md.append(f"- Previous session id: `{previous_summary['session_id']}`")
         md.append(
             f"- Near-opt rate: `{_fmt_float(float(previous_summary['near_opt_rate']) * 100.0)}%` -> `{_fmt_float(float(current_summary['near_opt_rate']) * 100.0)}%`"
             f" (`{_fmt_float(near_delta * 100.0, 1)}` pts)"
         )
+        if confidence_metadata_available and int(previous_summary.get("confidence_metadata_count") or 0) > 0:
+            md.append(
+                f"- Clear-best support rate: `{_fmt_float(float(previous_summary['clear_best_rate']) * 100.0)}%` -> `{_fmt_float(float(current_summary['clear_best_rate']) * 100.0)}%`"
+                f" (`{_fmt_float(clear_best_delta * 100.0, 1)}` pts)"
+            )
         md.append(
             f"- Avg regret: `{_fmt_float(float(previous_summary['avg_regret']))}` -> `{_fmt_float(float(current_summary['avg_regret']))}`"
             f" (`{_fmt_float(avg_regret_delta)}`)"
@@ -491,23 +566,47 @@ def generate_report(
 
     md.append("## Top Costly Decisions (By Regret)")
     md.append("")
-    md.append("| ts | hand | street | chosen | best | regret | tolerance | pot | to_call | user_stack |")
-    md.append("|---|---:|---|---|---|---:|---:|---:|---:|---:|")
+    if confidence_metadata_available:
+        md.append("| ts | hand | street | chosen | top line | confidence | se | regret | tolerance | pot | to_call | user_stack |")
+        md.append("|---|---:|---|---|---|---|---:|---:|---:|---:|---:|---:|")
+    else:
+        md.append("| ts | hand | street | chosen | top line | regret | tolerance | pot | to_call | user_stack |")
+        md.append("|---|---:|---|---|---|---:|---:|---:|---:|---:|")
     for e in top:
-        md.append(
-            "| {ts} | {hand} | {street} | {chosen} | {best} | {regret} | {tol} | {pot} | {to_call} | {stack} |".format(
-                ts=_time_only(str(e.get("ts") or "")),
-                hand=_fmt_int(e.get("hand_id")),
-                street=str(e.get("street") or ""),
-                chosen=str(e.get("chosen_action") or ""),
-                best=str(e.get("best_action") or ""),
-                regret=_fmt_float(float(e.get("regret") or 0.0)),
-                tol=_fmt_float(float(e.get("equivalence_tolerance") or 0.0)),
-                pot=_fmt_int(e.get("pot")),
-                to_call=_fmt_int(e.get("to_call")),
-                stack=_fmt_int(e.get("user_stack")),
+        confidence = _decision_best_confidence(e) or ""
+        stderr = _decision_best_stderr(e)
+        if confidence_metadata_available:
+            md.append(
+                "| {ts} | {hand} | {street} | {chosen} | {top_line} | {confidence} | {stderr} | {regret} | {tol} | {pot} | {to_call} | {stack} |".format(
+                    ts=_time_only(str(e.get("ts") or "")),
+                    hand=_fmt_int(e.get("hand_id")),
+                    street=str(e.get("street") or ""),
+                    chosen=str(e.get("chosen_action") or ""),
+                    top_line=_top_line_label(e),
+                    confidence=confidence,
+                    stderr=f"±{_fmt_float(stderr)}" if stderr is not None else "",
+                    regret=_fmt_float(float(e.get("regret") or 0.0)),
+                    tol=_fmt_float(float(e.get("equivalence_tolerance") or 0.0)),
+                    pot=_fmt_int(e.get("pot")),
+                    to_call=_fmt_int(e.get("to_call")),
+                    stack=_fmt_int(e.get("user_stack")),
+                )
             )
-        )
+        else:
+            md.append(
+                "| {ts} | {hand} | {street} | {chosen} | {top_line} | {regret} | {tol} | {pot} | {to_call} | {stack} |".format(
+                    ts=_time_only(str(e.get("ts") or "")),
+                    hand=_fmt_int(e.get("hand_id")),
+                    street=str(e.get("street") or ""),
+                    chosen=str(e.get("chosen_action") or ""),
+                    top_line=_top_line_label(e),
+                    regret=_fmt_float(float(e.get("regret") or 0.0)),
+                    tol=_fmt_float(float(e.get("equivalence_tolerance") or 0.0)),
+                    pot=_fmt_int(e.get("pot")),
+                    to_call=_fmt_int(e.get("to_call")),
+                    stack=_fmt_int(e.get("user_stack")),
+                )
+            )
     md.append("")
 
     md.append("## Sizing Tendencies (Chosen vs Best)")
@@ -533,13 +632,25 @@ def generate_report(
         for e in decisions
         if float(e.get("regret") or 0.0) > max(0.01, float(e.get("equivalence_tolerance") or 0.0))
     ]
+    supported_non_equivalent = [e for e in non_equivalent if _decision_has_clear_best(e)]
 
     worst = max(non_equivalent or decisions, key=lambda e: float(e.get("regret") or 0.0))
     worst_regret = float(worst.get("regret") or 0.0)
     worst_street = str(worst.get("street") or "")
     worst_chosen = str(worst.get("chosen_action") or "")
     worst_best = str(worst.get("best_action") or "")
-    has_major_leak = bool(non_equivalent) and worst_regret > max(0.01, float(worst.get("equivalence_tolerance") or 0.0))
+    worst_supported = (
+        max(supported_non_equivalent, key=lambda e: float(e.get("regret") or 0.0))
+        if supported_non_equivalent
+        else None
+    )
+    worst_supported_regret = float(worst_supported.get("regret") or 0.0) if worst_supported else 0.0
+    worst_supported_street = str(worst_supported.get("street") or "") if worst_supported else ""
+    worst_supported_chosen = str(worst_supported.get("chosen_action") or "") if worst_supported else ""
+    worst_supported_best = str(worst_supported.get("best_action") or "") if worst_supported else ""
+    has_major_leak = bool(worst_supported) and worst_supported_regret > max(
+        0.01, float(worst_supported.get("equivalence_tolerance") or 0.0)
+    )
 
     takeaways: list[tuple[str, str]] = []
     used_topics: set[str] = set()
@@ -562,6 +673,18 @@ def generate_report(
                 )
                 takeaways.append(("trend", f"{title}\n{detail}"))
                 used_topics.add("trend")
+
+    if confidence_metadata_available and decision_count >= 3 and clear_best_rate < 0.6:
+        takeaways.append(
+            (
+                "confidence",
+                (
+                    "**A large share of this session was estimate-only, not strong-signal grading.**\n"
+                    f"   - Only `{clear_best_count}/{decision_count}` decisions had a clear best line, so treat weak-gap postflop spots as directional coaching rather than firm mistakes."
+                ),
+            )
+        )
+        used_topics.add("confidence")
 
     street_focus = None
     for street, count, near_rate, street_avg_regret, street_total_regret in sorted(
@@ -604,11 +727,17 @@ def generate_report(
         direction = "overused" if delta > 0 else "underused"
         example_line = ""
         if isinstance(top_example, dict):
-            example_line = (
-                f" Biggest example: hand `{_fmt_int(top_example.get('hand_id'))}` {str(top_example.get('street') or '')}"
-                f" where `{action}` lost `{_fmt_float(float(top_example.get('regret') or 0.0))}` EV versus"
-                f" `{str(top_example.get('best_action') or '')}`."
-            )
+            if _decision_has_clear_best(top_example):
+                example_line = (
+                    f" Biggest example: hand `{_fmt_int(top_example.get('hand_id'))}` {str(top_example.get('street') or '')}"
+                    f" where `{action}` lost `{_fmt_float(float(top_example.get('regret') or 0.0))}` EV versus"
+                    f" `{str(top_example.get('best_action') or '')}`."
+                )
+            else:
+                example_line = (
+                    f" Biggest example: hand `{_fmt_int(top_example.get('hand_id'))}` {str(top_example.get('street') or '')}"
+                    f" where `{action}` lost `{_fmt_float(float(top_example.get('regret') or 0.0))}` EV, but the top line was not clearly separated."
+                )
         pattern_detail = (
             f"**Your sizing mix is drifting around `{action}`.**\n"
             f"   - You {direction} it: chosen `{chosen_count}` times vs best `{best_count}`, and those choices"
@@ -619,16 +748,16 @@ def generate_report(
         takeaways.append(("pattern", pattern_detail))
         used_topics.add("pattern")
 
-    if has_major_leak and worst_regret >= max(15.0, total_regret * 0.25):
-        if worst_best == "fold" and worst_chosen != "fold":
+    if has_major_leak and worst_supported_regret >= max(15.0, total_regret * 0.25):
+        if worst_supported_best == "fold" and worst_supported_chosen != "fold":
             title = "**Your biggest leak is still a hard-stop spot.**"
-        elif worst_chosen in {"check/call", "check"} and worst_best.startswith("raise"):
+        elif worst_supported_chosen in {"check/call", "check"} and worst_supported_best.startswith("raise"):
             title = "**Your biggest miss was passive when the model wanted pressure.**"
         else:
             title = "**One expensive punt is still distorting the session.**"
         detail = (
-            f"   - Hand `{_fmt_int(worst.get('hand_id'))}` {worst_street}: `{worst_chosen}` vs `{worst_best}`"
-            f" lost `{_fmt_float(worst_regret)}` EV, which is `{_fmt_float((worst_regret / total_regret) * 100.0 if total_regret else 0.0)}%`"
+            f"   - Hand `{_fmt_int(worst_supported.get('hand_id'))}` {worst_supported_street}: `{worst_supported_chosen}` vs `{worst_supported_best}`"
+            f" lost `{_fmt_float(worst_supported_regret)}` EV, which is `{_fmt_float((worst_supported_regret / total_regret) * 100.0 if total_regret else 0.0)}%`"
             f" of total session regret."
         )
         takeaways.append(("punt", f"{title}\n{detail}"))
@@ -665,8 +794,18 @@ def generate_report(
                     "fallback",
                     (
                         "**This sample points to one expensive mistake more than a repeat habit.**\n"
-                        f"   - Start with hand `{_fmt_int(worst.get('hand_id'))}` {worst_street}: `{worst_chosen}` vs `{worst_best}`"
-                        f" lost `{_fmt_float(worst_regret)}` EV."
+                        f"   - Start with hand `{_fmt_int(worst_supported.get('hand_id'))}` {worst_supported_street}: `{worst_supported_chosen}` vs `{worst_supported_best}`"
+                        f" lost `{_fmt_float(worst_supported_regret)}` EV."
+                    ),
+                )
+            )
+        elif confidence_metadata_available and non_equivalent and not supported_non_equivalent:
+            takeaways.append(
+                (
+                    "fallback",
+                    (
+                        "**The largest EV gaps in this sample were not strongly separated.**\n"
+                        f"   - `{len(non_equivalent)}` non-equivalent decisions were logged, but none had a clear best line, so review them as directional estimates rather than hard leaks."
                     ),
                 )
             )

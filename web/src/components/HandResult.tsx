@@ -1,12 +1,6 @@
 import type { PublicState } from '../types'
+import type { DecisionRecord } from '../evUtils'
 import { Card } from './Card'
-
-interface DecisionRecord {
-  label: string
-  ev: number
-  bestEV: number
-  nearOptimal: boolean
-}
 
 interface Props {
   state: PublicState
@@ -48,9 +42,19 @@ export function HandResult({ state, decisions, onNext }: Props) {
         <div className="decision-summary">
           <div className="decision-summary-title">Your decisions this hand</div>
           <div className="decision-summary-rows">
-            {decisions.map((d, i) => (
-              <div key={i} className={`decision-chip ${d.nearOptimal ? 'optimal' : 'subopt'}`}>
-                {d.label} {d.nearOptimal ? '✓' : `✗ (best: ${d.bestEV >= 0 ? '+' : ''}${d.bestEV.toFixed(1)})`}
+            {decisions.map((d) => (
+              <div
+                key={d.id}
+                className={`decision-chip ${d.graded ? (d.nearOptimal ? 'optimal' : 'subopt') : 'neutral'}`}
+              >
+                {d.street.toUpperCase()}: {d.label}{' '}
+                {d.graded
+                  ? (d.nearOptimal
+                      ? '✓'
+                      : (typeof d.bestEV === 'number' && Number.isFinite(d.bestEV)
+                          ? `✗ (best: ${d.bestEV >= 0 ? '+' : ''}${d.bestEV.toFixed(1)})`
+                          : '✗'))
+                  : `• ${d.reviewNote ?? 'estimate shown'}`}
               </div>
             ))}
           </div>
@@ -63,6 +67,3 @@ export function HandResult({ state, decisions, onNext }: Props) {
     </div>
   )
 }
-
-// Export the type so App.tsx can use it
-export type { DecisionRecord }

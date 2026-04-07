@@ -4,7 +4,9 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
+    "predev": "cd ../poker_core && wasm-pack build --target bundler --out-dir pkg_bundler",
     "dev": "vite",
+    "prebuild": "cd ../poker_core && wasm-pack build --target bundler --out-dir pkg_bundler",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
     "preview": "vite preview"

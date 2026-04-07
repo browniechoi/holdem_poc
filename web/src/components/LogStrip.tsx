@@ -16,36 +16,34 @@ function classifyEntry(line: string): EntryKind {
 }
 
 export function LogStrip({ entries }: Props) {
-  const endRef = useRef<HTMLDivElement>(null)
-  const visible = entries.filter(l => classifyEntry(l) !== 'skip')
+  const scrollerRef = useRef<HTMLDivElement>(null)
+  const visible = entries.filter(line => classifyEntry(line) !== 'skip')
 
   useEffect(() => {
-    endRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [entries.length])
+    const node = scrollerRef.current
+    if (!node) return
+    node.scrollLeft = node.scrollWidth
+  }, [visible.length])
 
   if (!visible.length) return null
 
-  // Number only action/user entries (fold, call, raise, bet, check, posts)
   let actionIdx = 0
 
   return (
     <div className="log-strip">
-      <div className="log-strip-title">Action log</div>
-      <div className="log-entries">
+      <div className="log-strip-title">Hand History</div>
+      <div className="log-entries log-entries--ticker" ref={scrollerRef}>
         {visible.map((line, i) => {
           const kind = classifyEntry(line)
           const isCountable = kind === 'action' || kind === 'user'
-          if (isCountable) actionIdx++
-          const num = isCountable ? actionIdx : null
-
+          if (isCountable) actionIdx += 1
           return (
-            <div key={i} className={`log-entry log-entry--${kind}`}>
-              {num !== null && <span className="log-num">{num}.</span>}
-              {line}
+            <div key={`${i}-${line}`} className={`log-entry log-entry--${kind}`}>
+              {isCountable && <span className="log-num">{actionIdx}.</span>}
+              <span className="log-text">{line}</span>
             </div>
           )
         })}
-        <div ref={endRef} />
       </div>
     </div>
   )
