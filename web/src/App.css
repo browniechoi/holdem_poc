@@ -279,6 +279,7 @@ body {
   grid-template-columns: minmax(0, 1fr) 280px;
   gap: 10px;
   min-height: 0;
+  max-height: 40vh;
 }
 
 .bottom-main {
@@ -764,7 +765,7 @@ body {
   padding: 10px 12px 12px;
   overflow-y: auto;
   min-height: 0;
-  max-height: 260px;
+  flex: 1;
 }
 .session-decision {
   border: 1px solid var(--border);
@@ -961,6 +962,6 @@ body {
   }
 
   .session-panel-list {
-    max-height: 180px;
+    flex: 1;
   }
 }

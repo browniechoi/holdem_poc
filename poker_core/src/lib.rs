@@ -3277,6 +3277,37 @@ fn action_amount(g: &Game, a: Action) -> i32 {
     }
 }
 
+/// Display amount for the UI — for raises, shows just the pot-relative size
+/// (without the call portion) so labels like "Raise Pot $5" are intuitive.
+fn action_display_amount(g: &Game, a: Action) -> i32 {
+    let u = user_index(g);
+    let p = &g.players[u];
+    match a {
+        Action::RaiseMin
+        | Action::RaiseHalfPot
+        | Action::RaiseThreeQuarterPot
+        | Action::RaisePot
+        | Action::RaiseOverbet125Pot
+        | Action::RaiseOverbet150Pot
+        | Action::RaiseOverbet175Pot
+        | Action::RaiseOverbet200Pot => {
+            let raise_extra = match a {
+                Action::RaiseMin => g.bb * 2,
+                Action::RaiseHalfPot => (g.pot / 2).max(g.bb * 2),
+                Action::RaiseThreeQuarterPot => ((g.pot * 3) / 4).max(g.bb * 2),
+                Action::RaisePot => g.pot.max(g.bb * 3),
+                Action::RaiseOverbet125Pot => ((g.pot * 5) / 4).max(g.bb * 2),
+                Action::RaiseOverbet150Pot => ((g.pot * 3) / 2).max(g.bb * 2),
+                Action::RaiseOverbet175Pot => ((g.pot * 7) / 4).max(g.bb * 2),
+                Action::RaiseOverbet200Pot => (g.pot * 2).max(g.bb * 2),
+                _ => 0,
+            };
+            raise_extra.min(p.stack)
+        }
+        _ => action_amount(g, a),
+    }
+}
+
 fn action_code_for(a: Action) -> u8 {
     match a {
         Action::Fold => 0,
@@ -3591,7 +3622,7 @@ fn actions_with_ev_json_str(g: &Game, iters: u32) -> String {
     for (idx, a) in acts.iter().copied().enumerate() {
         let ev = evs[idx];
         let lab = action_label(a);
-        let amt = action_amount(g, a);
+        let display_amt = action_display_amount(g, a);
         let is_best = (ev - best_ev).abs() < 1e-9;
         let ev_gap = (best_ev - ev).max(0.0);
         let (
@@ -3603,7 +3634,7 @@ fn actions_with_ev_json_str(g: &Game, iters: u32) -> String {
         out.push(ActionEV {
             action: lab.to_string(),
             action_code: action_code_for(a),
-            amount: amt,
+            amount: display_amt,
             ev,
             baseline_ev: baseline_evs[idx],
             ev_stderr: ev_stderr[idx],
