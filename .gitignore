@@ -4,3 +4,4 @@ HoldemPOC/.swiftpm/
 poker_core/target/
 *.dSYM/
 artifacts/
+!poker_core/pkg_bundler/

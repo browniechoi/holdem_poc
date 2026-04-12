@@ -1,0 +1,17 @@
+{
+  "name": "poker_core",
+  "type": "module",
+  "version": "0.1.0",
+  "files": [
+    "poker_core_bg.wasm",
+    "poker_core.js",
+    "poker_core_bg.js",
+    "poker_core.d.ts"
+  ],
+  "main": "poker_core.js",
+  "types": "poker_core.d.ts",
+  "sideEffects": [
+    "./poker_core.js",
+    "./snippets/*"
+  ]
+}
