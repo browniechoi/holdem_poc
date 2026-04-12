@@ -1096,7 +1096,7 @@ fn apply_action(g: &mut Game, idx: usize, a: Action) {
             }
             let need = (g.bet_to_call - g.players[idx].committed_street).max(0);
             let raise_extra = match a {
-                Action::RaiseMin => g.bb * 2,
+                Action::RaiseMin => g.bb,
                 Action::RaiseHalfPot => (g.pot / 2).max(g.bb * 2),
                 Action::RaiseThreeQuarterPot => ((g.pot * 3) / 4).max(g.bb * 2),
                 Action::RaisePot => g.pot.max(g.bb * 3),
@@ -3227,7 +3227,7 @@ fn action_amount(g: &Game, a: Action) -> i32 {
         Action::BetPot => (g.pot.max(g.bb)).min(p.stack),
         Action::BetOverbet150Pot => (((g.pot * 3) / 2).max(g.bb)).min(p.stack),
         Action::BetOverbet200Pot => ((g.pot * 2).max(g.bb)).min(p.stack),
-        Action::RaiseMin => (need + g.bb * 2).min(p.stack),
+        Action::RaiseMin => (need + g.bb).min(p.stack),
         Action::RaiseHalfPot => (need + (g.pot / 2).max(g.bb * 2)).min(p.stack),
         Action::RaiseThreeQuarterPot => (need + ((g.pot * 3) / 4).max(g.bb * 2)).min(p.stack),
         Action::RaisePot => (need + g.pot.max(g.bb * 3)).min(p.stack),

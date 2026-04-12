@@ -80,14 +80,31 @@ export interface DecisionRecord {
   reviewNote?: string
 }
 
-/** Remove actions whose chip amount duplicates an earlier entry (same-stack corner case). */
+/** Format breakeven win-rate for button display */
+export function fmtBreakeven(pct: number): string {
+  return `Need ${pct.toFixed(0)}%`
+}
+
+/** Derive a suggestion from equity vs required equity */
+export function equitySuggestion(
+  estimatedEquity: number,
+  requiredEquity: number,
+): { text: string; favorable: boolean } {
+  const gap = estimatedEquity - requiredEquity
+  if (gap >= 5) return { text: 'Call/raise viable', favorable: true }
+  if (gap >= -3) return { text: 'Marginal', favorable: true }
+  return { text: 'Fold suggested', favorable: false }
+}
+
+/** Remove actions whose actual total cost duplicates an earlier entry (same-stack corner case). */
 export function dedup(actions: ActionEV[]): ActionEV[] {
   const seen = new Set<number>()
   return actions.filter(a => {
     if (a.action === 'fold' || a.action === 'check/call') return true
-    if (a.amount <= 0) return true
-    if (seen.has(a.amount)) return false
-    seen.add(a.amount)
+    const cost = a.why?.chips_at_risk ?? a.amount
+    if (cost <= 0) return true
+    if (seen.has(cost)) return false
+    seen.add(cost)
     return true
   })
 }

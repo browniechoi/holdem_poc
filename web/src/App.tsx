@@ -175,28 +175,16 @@ export default function App() {
       setGradedPreflopLedger(prev => [...prev, nearOpt])
     }
 
-    if (!showEV) {
-      // Show review first; bots animate after user clicks Continue
-      setReview({ chosenCode: code, actions: [...actions], street: decisionStreet })
-      setReviewState(JSON.parse(JSON.stringify(state)) as PublicState)
-      setPhase('reviewing')
-      setTimeout(() => {
-        try { g.checkpoint() } catch (e) { console.warn('checkpoint failed:', e) }
-        g.applyUserAction(code)
-        setCanUndo(g.canUndo)
-      }, 0)
-    } else {
-      // EV visible — go straight to bot animation
-      setPhase('bot_acting')
-      setTimeout(() => {
-        try { g.checkpoint() } catch (e) { console.warn('checkpoint failed:', e) }
-        g.applyUserAction(code)
-        setState(g.state())
-        setCanUndo(g.canUndo)
-        startBotAnimation(g)
-      }, 0)
-    }
-  }, [phase, actions, showEV, startBotAnimation, state, currentHandNo])
+    // Always show review panel after acting
+    setReview({ chosenCode: code, actions: [...actions], street: decisionStreet })
+    setReviewState(JSON.parse(JSON.stringify(state)) as PublicState)
+    setPhase('reviewing')
+    setTimeout(() => {
+      try { g.checkpoint() } catch (e) { console.warn('checkpoint failed:', e) }
+      g.applyUserAction(code)
+      setCanUndo(g.canUndo)
+    }, 0)
+  }, [phase, actions, state, currentHandNo])
 
   const handleUndo = useCallback(() => {
     const g = gameRef.current

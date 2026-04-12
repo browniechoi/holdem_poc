@@ -2,13 +2,11 @@ import type { ActionEV } from '../types'
 import { chenEval } from '../chenFormula'
 import {
   ACTION_DISPLAY,
-  OVERSIZED_ACTIONS,
-  fmtMaybe,
-  primaryEv,
+  fmtBreakeven,
+  equitySuggestion,
   primaryConfidence,
   primaryStderr,
   primaryIsBest,
-  primaryIsClearBest,
   dedup,
 } from '../evUtils'
 
@@ -28,23 +26,11 @@ export function ActionPanel({ actions, onAct, disabled, showEV, onToggleEV, stre
 
   const isPreflop = street === 'preflop'
   const best = visible.find(a => primaryIsBest(a, isPreflop))
-  const poolBest = !isPreflop ? visible.find(a => a.is_best) : undefined
   const bestConfidence = best ? primaryConfidence(best, isPreflop) : 'low'
   const bestStderr = best ? primaryStderr(best, isPreflop) : null
-  const bestIsClear = best ? primaryIsClearBest(best, isPreflop) : false
   const chen = isPreflop && userHole.length === 2
     ? chenEval(userHole[0], userHole[1])
     : null
-  const confidenceLabel = best ? `${bestConfidence}-confidence` : ''
-  const bestLabel = best
-    ? `${ACTION_DISPLAY[best.action] ?? best.action}${best.amount > 0 && best.action !== 'fold' ? ` $${best.amount}` : ''}`
-    : ''
-  const downgradeOversizedPoolWinner = !isPreflop
-    && !!best
-    && !!poolBest
-    && poolBest.action_code !== best.action_code
-    && OVERSIZED_ACTIONS.has(poolBest.action)
-    && bestConfidence === 'low'
 
   return (
     <div className="action-panel">
@@ -58,18 +44,10 @@ export function ActionPanel({ actions, onAct, disabled, showEV, onToggleEV, stre
               Score {chen.score} · {chen.label}
             </span>
           )}
-          {showEV && best ? (
+          {showEV ? (
             <div className="action-hint">
-              <span className="action-hint-label">
-                {bestIsClear ? (isPreflop ? 'Best:' : 'Reference best:') : 'Estimate:'}
-              </span>{' '}
-              {isPreflop
-                ? (bestIsClear
-                    ? best.reason
-                    : `Top line is ${confidenceLabel}; treat the EV map as directional.${bestStderr !== null ? ` ±${bestStderr.toFixed(1)} chips standard error on the current best action.` : ''}`)
-                : (bestIsClear
-                    ? `Reference EV currently prefers ${bestLabel}. Pool EV stays secondary exploit context.${downgradeOversizedPoolWinner ? ' Pool EV is over-weighting an oversized exploit in this low-confidence node.' : ''}`
-                    : `Reference EV top line is ${confidenceLabel}; treat the postflop map as directional.${bestStderr !== null ? ` ±${bestStderr.toFixed(1)} chips standard error on the current reference best action.` : ''}${downgradeOversizedPoolWinner ? ' Pool EV is over-weighting an oversized exploit here, so oversized pool winners are being downgraded.' : ''}`)}
+              <span className="action-hint-label">Equity guide:</span>{' '}
+              How much win-rate each action needs to break even.
             </div>
           ) : (
             <div className="action-hint action-hint--hidden">Decide first, then reveal EV</div>
@@ -84,38 +62,73 @@ export function ActionPanel({ actions, onAct, disabled, showEV, onToggleEV, stre
         {visible.map(a => {
           const label = ACTION_DISPLAY[a.action] ?? a.action
           const amtLabel = a.amount > 0 && a.action !== 'fold' ? ` $${a.amount}` : ''
-          const shownEv = primaryEv(a, isPreflop)
-          const evPositive = shownEv >= 0
+          const hasBE = a.action !== 'fold' && a.why.breakeven_win_rate_pct > 0
+
+          const botEv = typeof a.ev === 'number' && Number.isFinite(a.ev) ? a.ev : null
+          const refEv = typeof a.baseline_ev === 'number' && Number.isFinite(a.baseline_ev) ? a.baseline_ev : null
+          const evGap = botEv !== null && refEv !== null ? botEv - refEv : null
+          const gapSignificant = evGap !== null && Math.abs(evGap) >= 2.0
 
           return (
             <button
               key={a.action_code}
               className={[
                 'action-btn',
-                showEV && primaryIsBest(a, isPreflop) && primaryIsClearBest(a, isPreflop) ? 'action-btn--best' : '',
                 a.action === 'fold' ? 'action-btn--fold' : '',
               ].filter(Boolean).join(' ')}
               onClick={() => onAct(a.action_code)}
               disabled={disabled}
             >
               <span className="action-btn-label">{label}{amtLabel}</span>
-              {showEV && (
-                <span className={`action-btn-ev ${evPositive ? 'ev-pos' : 'ev-neg'}`}>
-                  {fmtMaybe(shownEv)}
+              {showEV && hasBE && (
+                <span className={`action-btn-ev ${
+                  a.why.estimated_equity_pct >= a.why.breakeven_win_rate_pct ? 'ev-pos' : 'ev-neg'
+                }`}>
+                  {fmtBreakeven(a.why.breakeven_win_rate_pct)}
                 </span>
               )}
-              {showEV && primaryIsBest(a, isPreflop) && primaryIsClearBest(a, isPreflop) && <span className="action-btn-star">★</span>}
+              {showEV && botEv !== null && refEv !== null && (
+                <span className={`action-btn-ev-detail ${gapSignificant ? (evGap! > 0 ? 'ev-gap--exploit' : 'ev-gap--tight') : ''}`}>
+                  {botEv >= 0 ? '+' : ''}{botEv.toFixed(0)} / ref {refEv >= 0 ? '+' : ''}{refEv.toFixed(0)}
+                </span>
+              )}
             </button>
           )
         })}
       </div>
 
+      {showEV && (() => {
+        const callAction = visible.find(a => a.action === 'check/call')
+        const eq = visible[0]?.why
+        if (!eq) return null
+        const estimated = eq.estimated_equity_pct
+        const callRequired = callAction?.why.required_equity_pct ?? 0
+        const potOdds = callAction?.why.pot_odds_pct ?? 0
+        const suggestion = callRequired > 0 ? equitySuggestion(estimated, callRequired) : null
+        return (
+          <div className={`equity-summary ${suggestion ? (suggestion.favorable ? 'equity-summary--good' : 'equity-summary--bad') : 'equity-summary--good'}`}>
+            <span>Your equity: ~{estimated.toFixed(0)}%</span>
+            {callRequired > 0 ? (
+              <>
+                <span className="equity-summary-sep">·</span>
+                <span>Need {callRequired.toFixed(0)}% to call (pot odds {potOdds.toFixed(0)}%)</span>
+                <span className="equity-summary-sep">→</span>
+                <span className="equity-summary-verdict">{suggestion!.text}</span>
+              </>
+            ) : (
+              <>
+                <span className="equity-summary-sep">·</span>
+                <span>Check is free</span>
+              </>
+            )}
+          </div>
+        )
+      })()}
+
       {showEV && best && (
         <div className="action-why">
           <span className="why-pill">Confidence {bestConfidence}</span>
           {bestStderr !== null && <span className="why-pill">SE ±{bestStderr.toFixed(1)}</span>}
-          {!isPreflop && <span className="why-pill">Postflop primary: Reference EV</span>}
-          {downgradeOversizedPoolWinner && <span className="why-pill">Oversized pool exploit downgraded</span>}
           {best.why.hand_class && <span className="why-pill">{best.why.hand_class}</span>}
           {best.why.board_texture && <span className="why-pill">{best.why.board_texture}</span>}
           {best.why.made_hand_now && <span className="why-pill">{best.why.made_hand_now}</span>}
