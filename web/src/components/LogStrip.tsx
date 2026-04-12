@@ -31,7 +31,6 @@ export function LogStrip({ entries }: Props) {
 
   return (
     <div className="log-strip">
-      <div className="log-strip-title">Hand History</div>
       <div className="log-entries log-entries--ticker" ref={scrollerRef}>
         {visible.map((line, i) => {
           const kind = classifyEntry(line)
